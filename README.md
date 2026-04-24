@@ -32,7 +32,7 @@ project-root/
 2. Create and activate the conda environment:
 
    ```
-   conda env create -f gobbler_env.yml
+   conda env create -f gobbler.yml
    conda activate gobbler
    ```
 
