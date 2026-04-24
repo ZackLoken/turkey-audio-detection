@@ -2,3 +2,5 @@
 /data
 /docs
 /tests
+/src/turkey_audio_detection.egg-info
+/src/turkey_audio_detection/__pycache__
