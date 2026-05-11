@@ -279,6 +279,8 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
                 "project_root",
                 "aru_id",
                 "source_audio_path",
+                "confidence",
+                "recording_datetime",
             ]
         )
         queue_df.to_csv(layout.queue_dir / "review_queue.csv", index=False)
@@ -308,6 +310,17 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
         if not clip_path.exists():
             _extract_clip(audio_path, clip_path, clip_start, cfg.clip_duration_s)
 
+        # Parse recording datetime from filename for display in review app
+        fname_match = FILENAME_PATTERN.match(audio_path.name)
+        recording_datetime = ""
+        if fname_match:
+            try:
+                recording_datetime = datetime.strptime(
+                    f"{fname_match.group(2)}_{fname_match.group(3)}", "%Y%m%d_%H%M%S"
+                ).isoformat(sep=" ")
+            except ValueError:
+                pass
+
         rows.append(
             {
                 "item_id": item_id,
@@ -319,6 +332,8 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
                 "project_root": str(layout.project_root),
                 "aru_id": row.get("aru_id", ""),
                 "source_audio_path": str(audio_path),
+                "confidence": _safe_float(row.get("confidence", 0.0)),
+                "recording_datetime": recording_datetime,
             }
         )
 
