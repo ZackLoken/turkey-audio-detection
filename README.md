@@ -20,9 +20,9 @@ project-root/
 
 ## Collaborator quickstart (Windows)
 
-**Requirements:** Git for Windows, Anaconda or Miniconda, access to this private repository.
+**Requirements:** Git for Windows, Anaconda or Miniconda.
 
-1. Clone the repository (handles private-repo auth via Git credential manager):
+1. Clone the repository:
 
    ```
    git clone https://github.com/ZackLoken/turkey-audio-detection.git
