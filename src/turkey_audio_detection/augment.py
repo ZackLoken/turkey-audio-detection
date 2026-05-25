@@ -7,7 +7,7 @@ unit-testable in isolation (no torch modules, no global state).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -21,11 +21,7 @@ class SpecAugment:
     freq_mask_width: int = 12
     n_freq_masks: int = 2
     fill_value: float = -80.0  # roughly the floor of librosa log-mel in dB
-    rng: np.random.Generator | None = None
-
-    def __post_init__(self) -> None:
-        if self.rng is None:
-            self.rng = np.random.default_rng()
+    rng: np.random.Generator = field(default_factory=np.random.default_rng)
 
     def __call__(self, log_mel: np.ndarray, mask: np.ndarray, weak: np.ndarray):
         n_mels, n_frames = log_mel.shape
@@ -57,14 +53,12 @@ class Mixup:
     """Linearly blend two samples. Call with the partner sample provided via .set_partner()."""
 
     alpha: float = 0.4
-    rng: np.random.Generator | None = None
+    rng: np.random.Generator = field(default_factory=np.random.default_rng)
 
     def __post_init__(self) -> None:
-        if self.rng is None:
-            self.rng = np.random.default_rng()
         self._partner: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
 
-    def set_partner(self, partner: tuple[np.ndarray, np.ndarray, np.ndarray]) -> None:
+    def set_partner(self, partner: tuple[np.ndarray, np.ndarray, np.ndarray] | None) -> None:
         self._partner = partner
 
     def __call__(self, log_mel: np.ndarray, mask: np.ndarray, weak: np.ndarray):
@@ -87,11 +81,9 @@ class BackgroundMix:
     """Add a scaled background log-mel sample (no mask change)."""
 
     snr_db_range: tuple[float, float] = (5.0, 25.0)
-    rng: np.random.Generator | None = None
+    rng: np.random.Generator = field(default_factory=np.random.default_rng)
 
     def __post_init__(self) -> None:
-        if self.rng is None:
-            self.rng = np.random.default_rng()
         self._background: np.ndarray | None = None
 
     def set_background(self, background_log_mel: np.ndarray) -> None:

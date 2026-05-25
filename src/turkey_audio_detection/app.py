@@ -14,18 +14,14 @@ import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image
 
-from turkey_audio_detection.schemas import REGION_LABELS
 from turkey_audio_detection.spectrogram_render import (
     CANVAS_FMAX_HZ,
     CANVAS_FMIN_HZ,
     CANVAS_HEIGHT,
-    CANVAS_SR,
     CANVAS_WIDTH,
     DATA_BOTTOM_FRAC,
     DATA_LEFT_FRAC,
-    HOP_LENGTH_CANVAS,
-    N_FFT_CANVAS,
-    N_MELS_CANVAS,
+    DATA_TOP_FRAC,
     data_area_bounds,
     render_canvas_spectrogram,
 )
@@ -54,6 +50,9 @@ def turkey_canvas(
     frame_key: str,
     data_left_frac: float,
     data_bottom_frac: float,
+    data_top_frac: float,
+    fmin_hz: float,
+    fmax_hz: float,
     key: str,
 ) -> dict:
     """Audio control + active-label toggle + Other-birds/Unsure checkboxes +
@@ -86,6 +85,9 @@ def turkey_canvas(
         frameKey=frame_key,
         dataLeftFrac=float(data_left_frac),
         dataBottomFrac=float(data_bottom_frac),
+        dataTopFrac=float(data_top_frac),
+        fminHz=float(fmin_hz),
+        fmaxHz=float(fmax_hz),
         default=default_value,
         key=key,
     )
@@ -493,22 +495,19 @@ def main() -> None:
         st.markdown("---")
         with st.expander("How to label", expanded=False):
             st.markdown(
-                "Listen to the 3-second clip, then draw rectangles on the spectrogram "
-                "around each turkey call you hear and see (intensity = brightness).\n\n"
-                "- **Tom** = lime green &nbsp; **Hen** = royal blue. Toggle the active "
-                "label between drawings to mix Tom and Hen on one clip.\n"
-                "- **Other birds present** — tick when *any* non-turkey bird is audible "
-                "in the clip, even alongside a turkey call.\n"
-                "- **Unsure** — tick when you can't reliably tell whether a turkey is "
-                "or isn't in the clip. Excluded from agreement stats by default.\n"
-                "- **Save & Next** writes the snapshot and advances. Saving on "
-                "an empty canvas creates an explicit *no turkey* label.\n"
+                "Listen, then draw rectangles around each turkey call.\n\n"
+                "- **Tom** = lime green &nbsp; **Hen** = royal blue. Toggle active "
+                "label between drawings.\n"
+                "- **Click a rectangle** to replay its clipped audio. "
+                "**Double-click** deletes.\n"
+                "- **Other birds present** — any non-turkey bird audible in the clip.\n"
+                "- **Unsure** — you can't reliably tell. Excluded from agreement "
+                "stats by default.\n"
+                "- **Save & Next** writes the snapshot and advances; saving empty = "
+                "*no turkey* label.\n"
                 "- **Previous** edits the last labeled clip.\n"
-                "- **Reset canvas** clears drawings *and* removes any saved "
-                "snapshot for this clip, so the clip becomes unlabeled again. "
-                "Don't click Save & Next afterward if you want it to stay "
-                "unlabeled — just navigate away.\n"
-                "- **Double-click a rectangle** to delete it."
+                "- **Reset canvas** clears drawings and the saved snapshot for "
+                "this clip."
             )
 
     reviewer_id = st.session_state.get("reviewer_id", "").strip()
@@ -680,6 +679,9 @@ def main() -> None:
         frame_key=f"{_item_id}_{nonce}",
         data_left_frac=DATA_LEFT_FRAC,
         data_bottom_frac=DATA_BOTTOM_FRAC,
+        data_top_frac=DATA_TOP_FRAC,
+        fmin_hz=CANVAS_FMIN_HZ,
+        fmax_hz=CANVAS_FMAX_HZ,
         key=f"canvas_{_item_id}_{nonce}",
     )
     canvas_rects = canvas_state.get("rectangles", []) or []

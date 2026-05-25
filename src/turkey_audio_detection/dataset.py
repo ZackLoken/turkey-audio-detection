@@ -15,6 +15,7 @@ from typing import Callable, Iterable
 
 import librosa
 import numpy as np
+import pandas as pd
 import soundfile as sf
 import torch
 from torch.utils.data import Dataset
@@ -48,10 +49,9 @@ def _mel_band_centers_hz(p: MelParams) -> np.ndarray:
 
 def hz_to_mel_bin(hz: float, p: MelParams, centers: np.ndarray | None = None) -> int:
     """Return the closest mel-bin index for the given frequency in Hz."""
-    if centers is None:
-        centers = _mel_band_centers_hz(p)
+    band_centers: np.ndarray = centers if centers is not None else _mel_band_centers_hz(p)
     hz_clipped = float(np.clip(hz, p.fmin, p.fmax))
-    return int(np.argmin(np.abs(centers - hz_clipped)))
+    return int(np.argmin(np.abs(band_centers - hz_clipped)))
 
 
 def seconds_to_frame(s: float, p: MelParams) -> int:
@@ -156,7 +156,7 @@ class TurkeyClipDataset(Dataset):
 
     def __init__(
         self,
-        table: "pd.DataFrame",  # noqa: F821 — pandas typed by user at call site
+        table: pd.DataFrame,
         clip_duration_s: float = 3.0,
         mel: MelParams = MelParams(),
         augmentations: Iterable[Callable] = (),

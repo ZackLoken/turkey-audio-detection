@@ -193,7 +193,7 @@ def train(cfg: TrainConfig, project_root: Path) -> dict:
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.epochs)
-    scaler = torch.amp.GradScaler(enabled=device.type == "cuda")
+    scaler = torch.GradScaler(enabled=device.type == "cuda")
 
     out_dir = model_dir(project_root, cfg.model_id)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -212,7 +212,8 @@ def train(cfg: TrainConfig, project_root: Path) -> dict:
             # Prepare augmentation context for the next iteration's items
             if cfg.background_mix_enabled:
                 bg = _sample_background_mel(background_df, cfg.clip_duration_s, mel)
-                bgmix.set_background(bg if bg is not None else None)
+                if bg is not None:
+                    bgmix.set_background(bg)
             if cfg.mixup_alpha > 0 and partner_idx:
                 p_idx = partner_idx.pop()
                 try:
@@ -224,7 +225,9 @@ def train(cfg: TrainConfig, project_root: Path) -> dict:
             log_mel = log_mel.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast(device_type=device.type, enabled=device.type == "cuda"):
+            with torch.amp.autocast(  # type: ignore[attr-defined]
+                device_type=device.type, enabled=device.type == "cuda"
+            ):
                 logits = model(log_mel)
                 loss = criterion(logits, mask)
             scaler.scale(loss).backward()

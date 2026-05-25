@@ -154,16 +154,75 @@
   let fillAlpha = '0.15';
   let activeLabel = 'Tom';
   let drawing = false;
+  let pendingClick = false;          // mousedown happened, not yet decided draw-vs-click
+  let downX = 0, downY = 0;
   let startX = 0, startY = 0;
   let currentRect = null;
   let frameKey = null;
   let dataLeftFrac = 0.055;
   let dataBottomFrac = 0.13;
+  let dataTopFrac = 1.0;
+  let fminHz = 50.0;
+  let fmaxHz = 14000.0;
   let previewStopAt = null;  // seconds; pauses audio when reached
 
   function activeStroke() { return activeLabel === 'Tom' ? strokeTom : strokeHen; }
   function dataLeftPx() { return canvas.width * dataLeftFrac; }
   function dataWidthPx() { return canvas.width - dataLeftPx(); }
+  function dataTopPx() { return canvas.height * (1 - dataTopFrac); }
+  function dataBottomPx() { return canvas.height * (1 - dataBottomFrac); }
+
+  // Mel ↔ Hz (same formula librosa uses).
+  function hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700); }
+  function melToHz(m) { return 700 * (Math.pow(10, m / 2595) - 1); }
+
+  function canvasYToHz(y) {
+    const top = dataTopPx();
+    const bot = dataBottomPx();
+    const yClip = Math.max(top, Math.min(bot, y));
+    const frac = 1 - (yClip - top) / (bot - top);   // 1 at top (high), 0 at bottom (low)
+    const mel = hzToMel(fminHz) + frac * (hzToMel(fmaxHz) - hzToMel(fminHz));
+    return melToHz(mel);
+  }
+
+  // ---------- Web Audio bandpass for box-bounded preview --------------------
+  // We route the audio element through a highpass + lowpass biquad chain so the
+  // preview can be band-limited to the box's frequency bounds. The graph stays
+  // connected; when no preview is active we set cutoffs to passthrough.
+  let audioCtx = null;
+  let bpHigh = null;
+  let bpLow = null;
+
+  function ensureAudioGraph() {
+    if (audioCtx) return;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = new Ctx();
+      const src = audioCtx.createMediaElementSource(audio);
+      bpHigh = audioCtx.createBiquadFilter();
+      bpHigh.type = 'highpass';
+      bpHigh.frequency.value = 20;
+      bpLow = audioCtx.createBiquadFilter();
+      bpLow.type = 'lowpass';
+      bpLow.frequency.value = audioCtx.sampleRate / 2;
+      src.connect(bpHigh).connect(bpLow).connect(audioCtx.destination);
+    } catch (e) {
+      audioCtx = null;
+    }
+  }
+  function setBandpass(fmin, fmax) {
+    ensureAudioGraph();
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    bpHigh.frequency.value = Math.max(20, fmin || 20);
+    bpLow.frequency.value = Math.min(audioCtx.sampleRate / 2, fmax || (audioCtx.sampleRate / 2));
+  }
+  function clearBandpass() {
+    if (!audioCtx) return;
+    bpHigh.frequency.value = 20;
+    bpLow.frequency.value = audioCtx.sampleRate / 2;
+  }
 
   // ---------- streamlit bridge ---------------------------------------------
   function send(type, payload) {
@@ -233,29 +292,54 @@
     const start = canvasXToTime(r.x);
     const end = canvasXToTime(r.x + r.w);
     if (end <= start) return;
+    // Box y-bounds → frequency band (high y = low Hz, low y = high Hz).
+    const fmin = canvasYToHz(r.y + r.h);
+    const fmax = canvasYToHz(r.y);
+    setBandpass(fmin, fmax);
     audio.pause();
     audio.currentTime = start;
     previewStopAt = end;
     audio.play().catch(function () {});
   }
 
+  function rectAt(x, y) {
+    for (let i = rectangles.length - 1; i >= 0; i--) {
+      const r = rectangles[i];
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
+    }
+    return -1;
+  }
+
+  // mousedown stores the start point but doesn't commit to a draw until either
+  // (a) the user drags > 3 px (= new rectangle) or (b) mouseup arrives without
+  // movement (= click → replay any rectangle under the cursor).
   canvas.addEventListener('mousedown', (e) => {
-    [startX, startY] = localXY(e);
-    drawing = true;
-    currentRect = { x: startX, y: startY, w: 0, h: 0,
-                    stroke: activeStroke(), label: activeLabel };
+    [downX, downY] = localXY(e);
+    pendingClick = true;
+    drawing = false;
+    currentRect = null;
   });
   canvas.addEventListener('mousemove', (e) => {
-    if (!drawing) return;
+    if (!pendingClick && !drawing) return;
     const [x, y] = localXY(e);
-    currentRect.x = Math.min(startX, x);
-    currentRect.y = Math.min(startY, y);
-    currentRect.w = Math.abs(x - startX);
-    currentRect.h = Math.abs(y - startY);
-    redraw();
+    if (pendingClick) {
+      if (Math.hypot(x - downX, y - downY) > 3) {
+        pendingClick = false;
+        drawing = true;
+        startX = downX; startY = downY;
+        currentRect = { x: startX, y: startY, w: 0, h: 0,
+                        stroke: activeStroke(), label: activeLabel };
+      }
+    }
+    if (drawing) {
+      currentRect.x = Math.min(startX, x);
+      currentRect.y = Math.min(startY, y);
+      currentRect.w = Math.abs(x - startX);
+      currentRect.h = Math.abs(y - startY);
+      redraw();
+    }
   });
-  function endDraw() {
-    if (!drawing) return;
+  function finishDraw() {
     drawing = false;
     if (currentRect && currentRect.w > 3 && currentRect.h > 3) {
       rectangles.push(currentRect);
@@ -265,16 +349,27 @@
     currentRect = null;
     redraw();
   }
-  canvas.addEventListener('mouseup', endDraw);
-  canvas.addEventListener('mouseleave', endDraw);
+  canvas.addEventListener('mouseup', (e) => {
+    if (drawing) {
+      finishDraw();
+    } else if (pendingClick) {
+      const [x, y] = localXY(e);
+      const idx = rectAt(x, y);
+      if (idx >= 0) previewRect(rectangles[idx]);
+    }
+    pendingClick = false;
+  });
+  canvas.addEventListener('mouseleave', () => {
+    if (drawing) finishDraw();
+    pendingClick = false;
+  });
   canvas.addEventListener('dblclick', (e) => {
     const [x, y] = localXY(e);
-    for (let i = rectangles.length - 1; i >= 0; i--) {
-      const r = rectangles[i];
-      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
-        rectangles.splice(i, 1);
-        redraw(); sendValue(); return;
-      }
+    const idx = rectAt(x, y);
+    if (idx >= 0) {
+      rectangles.splice(idx, 1);
+      redraw();
+      sendValue();
     }
   });
 
@@ -297,6 +392,7 @@
     if (previewStopAt !== null && audio.currentTime >= previewStopAt) {
       audio.pause();
       previewStopAt = null;
+      clearBandpass();
     }
     updateTime();
     if (!audio.paused && !audio.ended) requestAnimationFrame(tick);
@@ -309,12 +405,14 @@
   audio.addEventListener('loadedmetadata', updateTime);
 
   playBtn.addEventListener('click', () => {
-    previewStopAt = null;  // manual play clears any preview-end gate
+    previewStopAt = null;
+    clearBandpass();
     if (audio.paused) audio.play().catch(function () {});
     else audio.pause();
   });
   scrubber.addEventListener('input', () => {
     previewStopAt = null;
+    clearBandpass();
     if (!isFinite(audio.duration)) return;
     audio.currentTime = (Number(scrubber.value) / 1000) * audio.duration;
   });
@@ -343,6 +441,9 @@
     if (args.strokeColorHen) strokeHen = args.strokeColorHen;
     if (typeof args.dataLeftFrac === 'number') dataLeftFrac = args.dataLeftFrac;
     if (typeof args.dataBottomFrac === 'number') dataBottomFrac = args.dataBottomFrac;
+    if (typeof args.dataTopFrac === 'number') dataTopFrac = args.dataTopFrac;
+    if (typeof args.fminHz === 'number') fminHz = args.fminHz;
+    if (typeof args.fmaxHz === 'number') fmaxHz = args.fmaxHz;
 
     if (img.getAttribute('src') !== bgUrl) img.setAttribute('src', bgUrl);
     img.width = w; img.height = h;
@@ -354,6 +455,7 @@
       audioSrc.setAttribute('src', audioUrl);
       audio.load();
       previewStopAt = null;
+      clearBandpass();
       audio.play().catch(function () {});
     }
 
