@@ -16,6 +16,7 @@ from astral.sun import sun
 from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig
 from turkey_audio_detection.ids import make_detection_id, make_item_id
 from turkey_audio_detection.layout import RunLayout, find_aru_dirs
+from turkey_audio_detection.spectrogram_render import save_canvas_spectrogram
 
 
 FILENAME_PATTERN = re.compile(r"^(\w+)_(\d{8})_(\d{6})\.wav$", re.IGNORECASE)
@@ -345,6 +346,49 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
     layout.queue_dir.mkdir(parents=True, exist_ok=True)
     queue_df.to_csv(layout.queue_dir / "review_queue.csv", index=False)
     return queue_df
+
+
+def stage_cache_spectrograms(layout: RunLayout, force: bool = False) -> dict:
+    """Pre-render the canvas-band spectrogram PNG for every clip in the review queue.
+
+    Idempotent by default: skips PNGs that already exist. Pass force=True to overwrite.
+    Returns a small summary dict useful for CLI logging.
+    """
+    queue_path = layout.queue_dir / "review_queue.csv"
+    if not queue_path.exists():
+        raise FileNotFoundError(f"Missing review queue: {queue_path}")
+    queue_df = pd.read_csv(queue_path)
+    if queue_df.empty:
+        return {"total": 0, "rendered": 0, "skipped": 0, "failed": 0}
+
+    layout.spectrograms_dir.mkdir(parents=True, exist_ok=True)
+    from tqdm import tqdm
+
+    rendered = 0
+    skipped = 0
+    failed = 0
+    for _, row in tqdm(
+        queue_df.iterrows(),
+        total=len(queue_df),
+        desc="Spectrogram cache",
+        unit="clip",
+        dynamic_ncols=True,
+    ):
+        item_id = str(row["item_id"])
+        clip_path = Path(str(row["clip_path"]))
+        out_path = layout.spectrograms_dir / f"{item_id}.png"
+        if out_path.exists() and not force:
+            skipped += 1
+            continue
+        if not clip_path.exists():
+            failed += 1
+            continue
+        if save_canvas_spectrogram(clip_path, out_path):
+            rendered += 1
+        else:
+            failed += 1
+
+    return {"total": int(len(queue_df)), "rendered": rendered, "skipped": skipped, "failed": failed}
 
 
 def stage_config_snapshot(index: IndexConfig, birdnet: BirdNetConfig, clips: ClipConfig) -> dict:

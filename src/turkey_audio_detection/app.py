@@ -8,29 +8,98 @@ import json
 import uuid
 
 import librosa
-import librosa.display
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
-from streamlit_drawable_canvas import st_canvas
 
 from turkey_audio_detection.schemas import REGION_LABELS
+from turkey_audio_detection.spectrogram_render import (
+    CANVAS_FMAX_HZ,
+    CANVAS_FMIN_HZ,
+    CANVAS_HEIGHT,
+    CANVAS_SR,
+    CANVAS_WIDTH,
+    DATA_BOTTOM_FRAC,
+    DATA_LEFT_FRAC,
+    HOP_LENGTH_CANVAS,
+    N_FFT_CANVAS,
+    N_MELS_CANVAS,
+    data_area_bounds,
+    render_canvas_spectrogram,
+)
 
 
-CANVAS_FMIN_HZ = 200.0
-CANVAS_FMAX_HZ = 6000.0
-CANVAS_SR = 48000
-CANVAS_WIDTH = 1200
-CANVAS_HEIGHT = 320
-N_MELS_CANVAS = 128
-N_FFT_CANVAS = 2048
-HOP_LENGTH_CANVAS = 512
+# Custom canvas component — replaces the unmaintained streamlit-drawable-canvas which
+# fails to render background images under Streamlit 1.30+ even with monkey-patches.
+_CANVAS_COMPONENT_DIR = Path(__file__).resolve().parent / "components" / "canvas"
+_canvas_component = components.declare_component(
+    "turkey_canvas", path=str(_CANVAS_COMPONENT_DIR)
+)
+
+
+def turkey_canvas(
+    *,
+    audio_url: str,
+    background_image_url: str,
+    stroke_color_tom: str,
+    stroke_color_hen: str,
+    width: int,
+    height: int,
+    initial_rects: list[dict],
+    initial_active_label: str,
+    initial_other_birds: bool,
+    initial_unsure: bool,
+    frame_key: str,
+    data_left_frac: float,
+    data_bottom_frac: float,
+    key: str,
+) -> dict:
+    """Audio control + active-label toggle + Other-birds/Unsure checkboxes +
+    spectrogram canvas + drawn-rectangle state, all in one Streamlit component
+    iframe. Returns a dict:
+        {
+          "rectangles": [{left, top, width, height, stroke, label}, ...],
+          "activeLabel": "Tom" | "Hen",
+          "otherBirdsPresent": bool,
+          "unsure": bool,
+        }
+    """
+    default_value = {
+        "rectangles": initial_rects or [],
+        "activeLabel": initial_active_label,
+        "otherBirdsPresent": bool(initial_other_birds),
+        "unsure": bool(initial_unsure),
+    }
+    result = _canvas_component(
+        audioUrl=audio_url,
+        backgroundImageUrl=background_image_url,
+        strokeColorTom=stroke_color_tom,
+        strokeColorHen=stroke_color_hen,
+        width=width,
+        height=height,
+        initialRects=initial_rects,
+        initialActiveLabel=initial_active_label,
+        initialOtherBirds=bool(initial_other_birds),
+        initialUnsure=bool(initial_unsure),
+        frameKey=frame_key,
+        dataLeftFrac=float(data_left_frac),
+        dataBottomFrac=float(data_bottom_frac),
+        default=default_value,
+        key=key,
+    )
+    return result if isinstance(result, dict) else default_value
+
 DEFAULT_CLIP_DURATION_S = 3.0
 
-STROKE_COLOR_TOM = "#b8922e"  # gold
-STROKE_COLOR_HEN = "#a84830"  # terracotta
+# Stroke colors chosen for maximum contrast against librosa's magma colormap
+# (dark purple → red → orange → yellow). Lime green and royal blue are both
+# outside magma's hue range. The canvas component also draws a white halo
+# under each colored stroke so the rectangle stays visible regardless of
+# background.
+STROKE_COLOR_TOM = "#39ff14"  # neon lime green
+STROKE_COLOR_HEN = "#4169e1"  # royal blue
 FILL_COLOR = "rgba(255, 255, 255, 0.15)"
 
 
@@ -126,108 +195,94 @@ def _current_queue_index(queue_df: pd.DataFrame, labels_df: pd.DataFrame) -> int
     return len(queue_df) - 1
 
 
+def _cached_spectrogram_path(clip_path: Path, item_id: str) -> Path:
+    """`data/_outputs/runs/<run_id>/clips/<item_id>.wav` →
+    `data/_outputs/runs/<run_id>/spectrograms/<item_id>.png`.
+    """
+    return clip_path.parent.parent / "spectrograms" / f"{item_id}.png"
+
+
+def _spectrogram_pil_for_clip(clip_path: Path, item_id: str) -> Image.Image | None:
+    """Return the clip's canvas-band spectrogram as a PIL image.
+
+    Reads the pre-rendered PNG cache if present (fast). Falls back to live
+    mel computation when the cache is missing. Reads bytes into memory and
+    constructs the image from BytesIO so the returned image is fully decoupled
+    from the on-disk file handle.
+    """
+    import io as _io
+
+    cached = _cached_spectrogram_path(clip_path, item_id)
+    if cached.exists():
+        try:
+            data = cached.read_bytes()
+            img = Image.open(_io.BytesIO(data))
+            img.load()
+            return img.convert("RGB")
+        except Exception:
+            pass
+    return _spectrogram_for_canvas(str(clip_path), CANVAS_WIDTH, CANVAS_HEIGHT)
+
+
+def _spectrogram_png_b64_for_clip(clip_path: Path, item_id: str) -> str:
+    """Return base64-PNG of the clip's canvas-band spectrogram for embedding as a
+    `data:image/png;base64,...` URL in the custom canvas component. Reads the
+    pre-rendered PNG cache as raw bytes when present (fast, no PIL re-encode).
+    """
+    import base64 as _b64
+
+    cached = _cached_spectrogram_path(clip_path, item_id)
+    if cached.exists():
+        try:
+            return _b64.b64encode(cached.read_bytes()).decode()
+        except Exception:
+            pass
+    pil = _spectrogram_for_canvas(str(clip_path), CANVAS_WIDTH, CANVAS_HEIGHT)
+    if pil is None:
+        return ""
+    import io as _io
+
+    buf = _io.BytesIO()
+    pil.save(buf, format="PNG")
+    return _b64.b64encode(buf.getvalue()).decode()
+
+
 _BG = "#0e1117"  # Streamlit dark background
 
 
 @st.cache_data(show_spinner=False)
-def _spectrogram_b64(audio_path_str: str) -> str | None:
-    """Compute mel spectrogram and return base64-encoded PNG. Cached by path."""
-    import io as _io
-    import base64 as _b64
-    try:
-        y, sr = librosa.load(audio_path_str, sr=None, mono=True)
-    except Exception:
-        return None
-    if y.size == 0:
-        return None
-    fig, ax = plt.subplots(figsize=(8, 2), facecolor=_BG)
-    ax.set_facecolor(_BG)
-    melspec = librosa.feature.melspectrogram(y=y, sr=sr)
-    db = librosa.power_to_db(melspec, ref=max(1e-6, melspec.max()))
-    librosa.display.specshow(db, sr=sr, x_axis="time", y_axis="mel", ax=ax)
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#aaaaaa")
-    ax.tick_params(colors="#cccccc")
-    ax.xaxis.label.set_color("#cccccc")
-    ax.yaxis.label.set_color("#cccccc")
-    plt.tight_layout()
-    buf = _io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=_BG)
-    plt.close(fig)
-    return _b64.b64encode(buf.getvalue()).decode()
-
-
-def _render_spectrogram(audio_path: Path) -> None:
-    b64 = _spectrogram_b64(str(audio_path))
-    if b64 is None:
-        st.warning("Unable to load spectrogram.")
-        return
-    # Embed as data URI — bypasses Streamlit's ephemeral media file storage.
-    st.html(
-        f'<img src="data:image/png;base64,{b64}" '
-        f'style="width:100%;display:block;background:{_BG}">'
-    )
-
-
-@st.cache_data(show_spinner=False)
 def _spectrogram_for_canvas(audio_path_str: str, width_px: int, height_px: int) -> Image.Image | None:
-    """Render an axis-free mel spectrogram pinned to the canvas band, sized for st_canvas."""
-    try:
-        y, sr = librosa.load(audio_path_str, sr=CANVAS_SR, mono=True)
-    except Exception:
-        return None
-    if y.size == 0:
-        return None
-    melspec = librosa.feature.melspectrogram(
-        y=y,
-        sr=sr,
-        n_fft=N_FFT_CANVAS,
-        hop_length=HOP_LENGTH_CANVAS,
-        n_mels=N_MELS_CANVAS,
-        fmin=CANVAS_FMIN_HZ,
-        fmax=CANVAS_FMAX_HZ,
-    )
-    db = librosa.power_to_db(melspec, ref=max(1e-6, float(melspec.max())))
-
-    dpi = 100
-    fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi, facecolor=_BG)
-    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
-    ax.set_facecolor(_BG)
-    librosa.display.specshow(
-        db,
-        sr=sr,
-        hop_length=HOP_LENGTH_CANVAS,
-        x_axis=None,
-        y_axis=None,
-        ax=ax,
-        fmin=CANVAS_FMIN_HZ,
-        fmax=CANVAS_FMAX_HZ,
-    )
-    ax.set_axis_off()
-    import io as _io
-    buf = _io.BytesIO()
-    fig.savefig(buf, format="png", pad_inches=0, facecolor=_BG)
-    plt.close(fig)
-    buf.seek(0)
-    return Image.open(buf).convert("RGB").resize((width_px, height_px))
+    """Streamlit-cached wrapper around the shared spectrogram renderer."""
+    return render_canvas_spectrogram(audio_path_str, width_px, height_px)
 
 
-def pixel_y_to_hz(py: float, canvas_h: int, fmin_hz: float, fmax_hz: float) -> float:
-    """Convert a canvas pixel-y (0 at top = high frequency) into Hz on the mel scale."""
+def pixel_y_to_hz(py: float, canvas_h: int, fmin_hz: float, fmax_hz: float,
+                  canvas_w: int = CANVAS_WIDTH) -> float:
+    """Convert a canvas pixel-y to Hz on the mel scale, clipped to the data area.
+
+    The spectrogram leaves a margin at the bottom (and a thin top margin in some
+    configurations) for axis labels. Pixel-y values inside the margin clip to the
+    nearest data-area edge so the returned Hz is always inside [fmin, fmax].
+    """
+    _, data_top, _, data_bottom = data_area_bounds(canvas_w, canvas_h)
+    py_clipped = max(data_top, min(data_bottom, py))
     mel_min = librosa.hz_to_mel(fmin_hz)
     mel_max = librosa.hz_to_mel(fmax_hz)
-    frac = max(0.0, min(1.0, 1.0 - (py / canvas_h)))
+    frac = 1.0 - (py_clipped - data_top) / (data_bottom - data_top)
+    frac = max(0.0, min(1.0, frac))
     mel = mel_min + frac * (mel_max - mel_min)
     return float(librosa.mel_to_hz(mel))
 
 
-def hz_to_pixel_y(hz: float, canvas_h: int, fmin_hz: float, fmax_hz: float) -> float:
-    """Inverse of pixel_y_to_hz — used to rebuild canvas rectangles from saved regions."""
+def hz_to_pixel_y(hz: float, canvas_h: int, fmin_hz: float, fmax_hz: float,
+                  canvas_w: int = CANVAS_WIDTH) -> float:
+    """Inverse of pixel_y_to_hz — returns a pixel-y inside the data area."""
+    _, data_top, _, data_bottom = data_area_bounds(canvas_w, canvas_h)
     mel_min = librosa.hz_to_mel(fmin_hz)
     mel_max = librosa.hz_to_mel(fmax_hz)
     mel_target = librosa.hz_to_mel(max(fmin_hz, min(fmax_hz, hz)))
     frac = (mel_target - mel_min) / (mel_max - mel_min) if mel_max > mel_min else 0.0
-    return float((1.0 - frac) * canvas_h)
+    return float(data_top + (1.0 - frac) * (data_bottom - data_top))
 
 
 def rect_to_region(
@@ -239,7 +294,12 @@ def rect_to_region(
     fmax_hz: float,
     snap_freq: bool,
 ) -> dict | None:
-    """Convert one drawable-canvas rect into a region dict, or None if degenerate."""
+    """Convert one drawable-canvas rect into a region dict, or None if degenerate.
+
+    Rectangles are clipped to the spectrogram data area so any portion the
+    reviewer draws into the axis-label margins is discarded before computing
+    (time, Hz) bounds.
+    """
     if obj.get("type") != "rect":
         return None
     left = float(obj.get("left", 0.0))
@@ -249,8 +309,17 @@ def rect_to_region(
     if width <= 0 or height <= 0:
         return None
 
-    start_s = max(0.0, min(clip_duration_s, (left / canvas_w) * clip_duration_s))
-    end_s = max(0.0, min(clip_duration_s, ((left + width) / canvas_w) * clip_duration_s))
+    data_left, data_top, data_right, data_bottom = data_area_bounds(canvas_w, canvas_h)
+    rect_left = max(data_left, left)
+    rect_right = min(data_right, left + width)
+    rect_top = max(data_top, top)
+    rect_bottom = min(data_bottom, top + height)
+    if rect_right <= rect_left or rect_bottom <= rect_top:
+        return None
+
+    data_w = data_right - data_left
+    start_s = max(0.0, min(clip_duration_s, ((rect_left - data_left) / data_w) * clip_duration_s))
+    end_s = max(0.0, min(clip_duration_s, ((rect_right - data_left) / data_w) * clip_duration_s))
     if end_s <= start_s:
         return None
 
@@ -258,8 +327,8 @@ def rect_to_region(
         freq_min_hz = float(fmin_hz)
         freq_max_hz = float(fmax_hz)
     else:
-        freq_min_hz = pixel_y_to_hz(top + height, canvas_h, fmin_hz, fmax_hz)
-        freq_max_hz = pixel_y_to_hz(top, canvas_h, fmin_hz, fmax_hz)
+        freq_min_hz = pixel_y_to_hz(rect_bottom, canvas_h, fmin_hz, fmax_hz, canvas_w)
+        freq_max_hz = pixel_y_to_hz(rect_top, canvas_h, fmin_hz, fmax_hz, canvas_w)
     if freq_max_hz <= freq_min_hz:
         return None
 
@@ -289,11 +358,18 @@ def region_to_rect(
     fmin_hz: float,
     fmax_hz: float,
 ) -> dict:
-    """Build a fabric.js rect object suitable for st_canvas initial_drawing."""
-    left = (region["start_s"] / clip_duration_s) * canvas_w
-    width = ((region["end_s"] - region["start_s"]) / clip_duration_s) * canvas_w
-    top = hz_to_pixel_y(region["freq_max_hz"], canvas_h, fmin_hz, fmax_hz)
-    bottom = hz_to_pixel_y(region["freq_min_hz"], canvas_h, fmin_hz, fmax_hz)
+    """Build a rect dict (`left`, `top`, `width`, `height`, `stroke`) for the
+    custom canvas's `initial_rects` payload.
+
+    Region coords are expressed in (time, Hz); the rect is positioned inside the
+    spectrogram data area so it lines up with the underlying image.
+    """
+    data_left, _, data_right, _ = data_area_bounds(canvas_w, canvas_h)
+    data_w = data_right - data_left
+    left = data_left + (region["start_s"] / clip_duration_s) * data_w
+    width = ((region["end_s"] - region["start_s"]) / clip_duration_s) * data_w
+    top = hz_to_pixel_y(region["freq_max_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w)
+    bottom = hz_to_pixel_y(region["freq_min_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w)
     height = max(1.0, bottom - top)
     stroke = STROKE_COLOR_TOM if region.get("label") == "Tom" else STROKE_COLOR_HEN
     return {
@@ -309,23 +385,6 @@ def region_to_rect(
         "stroke": stroke,
         "strokeWidth": 2,
         "strokeUniform": True,
-    }
-
-
-def regions_to_initial_drawing(
-    regions: list[dict],
-    canvas_w: int,
-    canvas_h: int,
-    clip_duration_s: float,
-    fmin_hz: float,
-    fmax_hz: float,
-) -> dict:
-    return {
-        "version": "5.3.0",
-        "objects": [
-            region_to_rect(r, canvas_w, canvas_h, clip_duration_s, fmin_hz, fmax_hz)
-            for r in regions
-        ],
     }
 
 
@@ -358,12 +417,10 @@ def _inject_css() -> None:
     st.markdown(
         """
         <style>
-        /* Remove vertical scroll */
-        html, body { overflow: hidden !important; }
-        section[data-testid="stAppViewContainer"] > div:first-child { overflow: hidden !important; }
-        section[data-testid="stMain"] > div:first-child { overflow: hidden !important; }
-
-        /* Shrink default Streamlit vertical padding so content fits */
+        /* Shrink default Streamlit vertical padding so the audio + spectrogram +
+           controls + nav buttons fit close together. Vertical scroll is left
+           enabled (Streamlit default) so the nav buttons remain reachable on
+           shorter monitors. */
         div[data-testid="stMainBlockContainer"] {
             padding-top: 1rem !important;
             padding-bottom: 0.5rem !important;
@@ -433,6 +490,27 @@ def main() -> None:
             st.session_state["session_id"] = st.session_state.get("session_id") or str(uuid.uuid4())
             st.rerun()
 
+        st.markdown("---")
+        with st.expander("How to label", expanded=False):
+            st.markdown(
+                "Listen to the 3-second clip, then draw rectangles on the spectrogram "
+                "around each turkey call you hear and see (intensity = brightness).\n\n"
+                "- **Tom** = lime green &nbsp; **Hen** = royal blue. Toggle the active "
+                "label between drawings to mix Tom and Hen on one clip.\n"
+                "- **Other birds present** — tick when *any* non-turkey bird is audible "
+                "in the clip, even alongside a turkey call.\n"
+                "- **Unsure** — tick when you can't reliably tell whether a turkey is "
+                "or isn't in the clip. Excluded from agreement stats by default.\n"
+                "- **Save & Next** writes the snapshot and advances. Saving on "
+                "an empty canvas creates an explicit *no turkey* label.\n"
+                "- **Previous** edits the last labeled clip.\n"
+                "- **Reset canvas** clears drawings *and* removes any saved "
+                "snapshot for this clip, so the clip becomes unlabeled again. "
+                "Don't click Save & Next afterward if you want it to stay "
+                "unlabeled — just navigate away.\n"
+                "- **Double-click a rectangle** to delete it."
+            )
+
     reviewer_id = st.session_state.get("reviewer_id", "").strip()
     run_id = st.session_state.get("run_id", "").strip()
 
@@ -470,6 +548,10 @@ def main() -> None:
             time_str = _dt.strftime("%I:%M %p").lower()
             if time_str.startswith("0"):
                 time_str = time_str[1:]
+            # The WAV filename's HHMMSS is the ARU's local clock (presumed Eastern
+            # per IndexConfig.timezone_name's default of "US/Eastern"). Append "ET"
+            # so reviewers don't have to guess.
+            time_str = time_str + " ET"
         except ValueError:
             date_str = raw_dt
     conf_str = "—"
@@ -492,6 +574,14 @@ def main() -> None:
     existing_regions: list[dict] = (
         _parse_regions(_latest_row.get("regions_json", "")) if _latest_row is not None else []
     )
+    # One-shot "reset" flag — when set by the Reset canvas button, suppress the saved
+    # regions for a single render so the canvas comes up empty. The flag clears
+    # itself after consumption so subsequent renders of the same clip restore the
+    # saved snapshot (e.g. when Previous brings the reviewer back).
+    _reset_key = f"_reset_{_item_id}"
+    if st.session_state.get(_reset_key):
+        existing_regions = []
+        st.session_state[_reset_key] = False
 
     def _format_summary(latest_row, regions: list[dict]) -> str:
         if latest_row is None:
@@ -500,16 +590,15 @@ def main() -> None:
         hen_n = sum(1 for r in regions if r.get("label") == "Hen")
         parts: list[str] = []
         if tom_n:
-            parts.append(f"{tom_n}×Tom")
+            parts.append(f"{tom_n} Tom")
         if hen_n:
-            parts.append(f"{hen_n}×Hen")
-        if not parts:
-            parts.append("No turkey")
+            parts.append(f"{hen_n} Hen")
+        summary = ", ".join(parts) if parts else "No turkey"
         if int(latest_row.get("other_birds_present", 0) or 0):
-            parts.append("+other birds")
+            summary += " · other birds"
         if int(latest_row.get("unsure", 0) or 0):
-            parts.append("(unsure)")
-        return " ".join(parts)
+            summary += " · unsure"
+        return summary
 
     _existing_label = _format_summary(_latest_row, existing_regions)
 
@@ -535,88 +624,67 @@ def main() -> None:
 
     import base64
     _audio_b64 = base64.b64encode(clip_path.read_bytes()).decode()
-    st.html(
-        f'<body style="margin:0;padding:0;background:{_BG}">'
-        f'<audio id="clip" controls '
-        f'style="width:100%;color-scheme:dark">'
-        f'<source src="data:audio/wav;base64,{_audio_b64}" type="audio/wav">'
-        f'</audio>'
-        f'<script>'
-        f'var a=document.getElementById("clip");'
-        f'a.load();'
-        f'a.play().catch(function(){{}});'
-        f'</script>'
-        f'</body>',
-        unsafe_allow_javascript=True,
-    )
+    # Audio is now rendered INSIDE the canvas component so audio events drive
+    # the timestamp and the playhead with no cross-iframe communication.
+    _audio_url = "data:audio/wav;base64," + _audio_b64
 
-    # Full-band reference spectrogram (small strip).
-    _render_spectrogram(clip_path)
-
-    # Per-clip widget state defaults — seed once per item_id from the latest snapshot.
+    # Per-clip canvas state — the controls (active label, other birds, unsure)
+    # live inside the canvas component so we only seed initial values here; the
+    # current state comes back via the component's return value on each rerun.
     init_key = f"_init_{_item_id}"
     if not st.session_state.get(init_key):
-        st.session_state[f"active_label_{_item_id}"] = "Tom"
-        st.session_state[f"snap_freq_{_item_id}"] = False
-        st.session_state[f"other_birds_{_item_id}"] = bool(
-            int(_latest_row.get("other_birds_present", 0) or 0) if _latest_row is not None else 0
-        )
-        st.session_state[f"unsure_{_item_id}"] = bool(
-            int(_latest_row.get("unsure", 0) or 0) if _latest_row is not None else 0
-        )
         st.session_state[f"canvas_nonce_{_item_id}"] = 0
         st.session_state[init_key] = True
 
-    ctrl_cols = st.columns([2, 2, 2, 2])
-    with ctrl_cols[0]:
-        active_label = st.radio(
-            "Active label",
-            options=["Tom", "Hen"],
-            horizontal=True,
-            key=f"active_label_{_item_id}",
-        )
-    with ctrl_cols[1]:
-        snap_freq = st.checkbox("Snap to full frequency band", key=f"snap_freq_{_item_id}")
-    with ctrl_cols[2]:
-        other_birds_present = st.checkbox("Other birds present", key=f"other_birds_{_item_id}")
-    with ctrl_cols[3]:
-        unsure = st.checkbox("Unsure", key=f"unsure_{_item_id}")
+    initial_other_birds = bool(
+        int(_latest_row.get("other_birds_present", 0) or 0) if _latest_row is not None else 0
+    )
+    initial_unsure = bool(
+        int(_latest_row.get("unsure", 0) or 0) if _latest_row is not None else 0
+    )
 
-    stroke_color = STROKE_COLOR_TOM if active_label == "Tom" else STROKE_COLOR_HEN
-
-    spec_pil = _spectrogram_for_canvas(str(clip_path), CANVAS_WIDTH, CANVAS_HEIGHT)
-    if spec_pil is None:
+    spec_b64 = _spectrogram_png_b64_for_clip(clip_path, _item_id)
+    if not spec_b64:
         st.warning("Unable to render canvas spectrogram.")
         return
+    spec_url = "data:image/png;base64," + spec_b64
 
-    initial_drawing = regions_to_initial_drawing(
-        existing_regions,
-        CANVAS_WIDTH,
-        CANVAS_HEIGHT,
-        clip_duration_s,
-        CANVAS_FMIN_HZ,
-        CANVAS_FMAX_HZ,
-    ) if existing_regions else None
+    # Seed the canvas with rectangles from the latest saved snapshot (if any), so
+    # Previous on a labeled clip restores the user's prior drawing.
+    initial_rects: list[dict] = []
+    for region in existing_regions:
+        rect = region_to_rect(
+            region, CANVAS_WIDTH, CANVAS_HEIGHT, clip_duration_s, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
+        )
+        initial_rects.append({
+            "left": float(rect["left"]),
+            "top": float(rect["top"]),
+            "width": float(rect["width"]),
+            "height": float(rect["height"]),
+            "stroke": rect["stroke"],
+            "label": region.get("label", "Tom"),
+        })
 
     nonce = st.session_state.get(f"canvas_nonce_{_item_id}", 0)
-    canvas_result = st_canvas(
-        fill_color=FILL_COLOR,
-        stroke_width=2,
-        stroke_color=stroke_color,
-        background_image=spec_pil,
-        update_streamlit=True,
-        height=CANVAS_HEIGHT,
+    canvas_state = turkey_canvas(
+        audio_url=_audio_url,
+        background_image_url=spec_url,
+        stroke_color_tom=STROKE_COLOR_TOM,
+        stroke_color_hen=STROKE_COLOR_HEN,
         width=CANVAS_WIDTH,
-        drawing_mode="rect",
-        initial_drawing=initial_drawing,
+        height=CANVAS_HEIGHT,
+        initial_rects=initial_rects,
+        initial_active_label="Tom",
+        initial_other_birds=initial_other_birds,
+        initial_unsure=initial_unsure,
+        frame_key=f"{_item_id}_{nonce}",
+        data_left_frac=DATA_LEFT_FRAC,
+        data_bottom_frac=DATA_BOTTOM_FRAC,
         key=f"canvas_{_item_id}_{nonce}",
     )
-
-    st.caption(
-        f"Canvas band: {int(CANVAS_FMIN_HZ)}–{int(CANVAS_FMAX_HZ)} Hz   ·   "
-        f"clip duration: {clip_duration_s:.2f} s   ·   "
-        f"draw rectangles around each Tom / Hen call (switch label before drawing)."
-    )
+    canvas_rects = canvas_state.get("rectangles", []) or []
+    other_birds_present = bool(canvas_state.get("otherBirdsPresent", initial_other_birds))
+    unsure = bool(canvas_state.get("unsure", initial_unsure))
 
     action_cols = st.columns([2, 1, 1, 1])
     save_clicked = action_cols[0].button("Save & Next", type="primary", width="stretch")
@@ -625,19 +693,24 @@ def main() -> None:
     jump_clicked = action_cols[3].button("Jump to first unlabeled", width="stretch")
 
     if save_clicked:
-        raw_objects = []
-        if canvas_result is not None and canvas_result.json_data is not None:
-            raw_objects = canvas_result.json_data.get("objects", []) or []
         regions: list[dict] = []
-        for obj in raw_objects:
+        for obj in canvas_rects or []:
+            # The custom canvas sends rectangles in the same shape rect_to_region expects:
+            # {left, top, width, height, stroke, label}. We synthesize a `type: "rect"` so
+            # the rect_to_region guard accepts the row, and pass scaleX/scaleY = 1.0
+            # (the custom canvas doesn't apply any scaling).
+            shape = dict(obj)
+            shape.setdefault("type", "rect")
+            shape.setdefault("scaleX", 1.0)
+            shape.setdefault("scaleY", 1.0)
             region = rect_to_region(
-                obj,
+                shape,
                 CANVAS_WIDTH,
                 CANVAS_HEIGHT,
                 clip_duration_s,
                 CANVAS_FMIN_HZ,
                 CANVAS_FMAX_HZ,
-                snap_freq,
+                snap_freq=False,
             )
             if region is not None:
                 regions.append(region)
@@ -665,6 +738,21 @@ def main() -> None:
         st.rerun()
 
     if discard_clicked:
+        # Reset canvas wipes any saved snapshot(s) for this item from the
+        # reviewer's labels CSV so the clip becomes truly unlabeled (and
+        # `Jump to first unlabeled` returns to it). Combined with the
+        # _reset_key flag + nonce bump, the canvas widget also re-renders
+        # empty on the next pass.
+        labels_path = _labels_path(project_root, reviewer_id)
+        if labels_path.exists():
+            try:
+                df_lbl = pd.read_csv(labels_path)
+                if "item_id" in df_lbl.columns and not df_lbl.empty:
+                    df_lbl = df_lbl[df_lbl["item_id"].astype(str) != _item_id]
+                    df_lbl.to_csv(labels_path, index=False)
+            except Exception:
+                pass
+        st.session_state[_reset_key] = True
         st.session_state[f"canvas_nonce_{_item_id}"] = nonce + 1
         st.rerun()
 

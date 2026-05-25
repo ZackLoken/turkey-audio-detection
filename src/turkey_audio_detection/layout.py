@@ -17,6 +17,7 @@ class RunLayout:
     birdnet_dir: Path
     queue_dir: Path
     clips_dir: Path
+    spectrograms_dir: Path
     manifests_dir: Path
     review_labels_dir: Path
     review_adjudication_dir: Path
@@ -36,6 +37,7 @@ class RunLayout:
             birdnet_dir=run_root / "birdnet",
             queue_dir=run_root / "queue",
             clips_dir=run_root / "clips",
+            spectrograms_dir=run_root / "spectrograms",
             manifests_dir=run_root / "manifests",
             review_labels_dir=outputs_root / "review" / "labels",
             review_adjudication_dir=outputs_root / "review" / "adjudication",
@@ -47,6 +49,7 @@ class RunLayout:
             self.birdnet_dir,
             self.queue_dir,
             self.clips_dir,
+            self.spectrograms_dir,
             self.manifests_dir,
             self.review_labels_dir,
             self.review_adjudication_dir,

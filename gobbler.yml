@@ -282,7 +282,6 @@ dependencies:
       - soxr==1.0.0
       - stack-data==0.6.3
       - streamlit==1.56.0
-      - streamlit-drawable-canvas==0.9.3
       - tenacity==9.1.4
       - tensorflow==2.21.0
       - termcolor==3.3.0

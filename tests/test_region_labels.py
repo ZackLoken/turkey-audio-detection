@@ -19,6 +19,7 @@ from turkey_audio_detection.app import (
     rect_to_region,
     region_to_rect,
 )
+from turkey_audio_detection.spectrogram_render import data_area_bounds
 
 
 def test_pixel_y_to_hz_endpoints() -> None:
@@ -46,12 +47,18 @@ def test_hz_to_pixel_y_round_trip() -> None:
 
 
 def test_rect_to_region_basic_tom() -> None:
+    # Rect drawn entirely inside the spectrogram data area (i.e., to the right of
+    # the frequency-axis label margin on the left edge of the canvas).
+    data_left, data_top, data_right, data_bottom = data_area_bounds(CANVAS_WIDTH, CANVAS_HEIGHT)
+    data_w = data_right - data_left
+    left_px = data_left + data_w * 0.25
+    width_px = data_w * 0.25
     obj = {
         "type": "rect",
-        "left": CANVAS_WIDTH * 0.25,  # 0.75 s into a 3 s clip
-        "top": 50.0,
-        "width": CANVAS_WIDTH * 0.25,  # spans 0.75 s
-        "height": 100.0,
+        "left": left_px,
+        "top": data_top + 30.0,
+        "width": width_px,
+        "height": 80.0,
         "stroke": STROKE_COLOR_TOM,
     }
     region = rect_to_region(
@@ -59,6 +66,7 @@ def test_rect_to_region_basic_tom() -> None:
     )
     assert region is not None
     assert region["label"] == "Tom"
+    # 25 % into the data area → 0.75 s; +25 % more → 1.5 s.
     assert region["start_s"] == pytest.approx(0.75, abs=1e-3)
     assert region["end_s"] == pytest.approx(1.5, abs=1e-3)
     assert CANVAS_FMIN_HZ < region["freq_min_hz"] < region["freq_max_hz"] < CANVAS_FMAX_HZ

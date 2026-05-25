@@ -11,6 +11,7 @@ from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig
 from turkey_audio_detection.layout import RunLayout, validate_project_layout
 from turkey_audio_detection.manifest import build_stage_manifest, make_run_id, write_manifest
 from turkey_audio_detection.stages import (
+    stage_cache_spectrograms,
     stage_config_snapshot,
     stage_extract_clips,
     stage_index_data,
@@ -125,6 +126,26 @@ def _cmd_extract_clips(args: argparse.Namespace) -> int:
     write_manifest(layout.manifests_dir / "extract_clips_manifest.json", manifest)
 
     _print(f"extract-clips completed for {project_root} | run_id={run_id} | queue_items={len(queue_df)}")
+
+    if not getattr(args, "skip_spectrogram_cache", False) and not queue_df.empty:
+        _print(f"caching spectrograms for {project_root} | run_id={run_id} ...")
+        summary = stage_cache_spectrograms(layout)
+        _print(
+            f"cache-spectrograms completed | rendered={summary['rendered']} "
+            f"skipped={summary['skipped']} failed={summary['failed']}"
+        )
+    return 0
+
+
+def _cmd_cache_spectrograms(args: argparse.Namespace) -> int:
+    project_root = Path(args.project_root).resolve()
+    layout = RunLayout.from_project_root(project_root, args.run_id)
+    layout.spectrograms_dir.mkdir(parents=True, exist_ok=True)
+    summary = stage_cache_spectrograms(layout, force=args.force)
+    _print(
+        f"cache-spectrograms completed for {project_root} | run_id={args.run_id} | "
+        f"rendered={summary['rendered']} skipped={summary['skipped']} failed={summary['failed']}"
+    )
     return 0
 
 
@@ -255,6 +276,7 @@ def _cmd_run_all(args: argparse.Namespace) -> int:
         project_root=args.project_root,
         clip_duration=args.clip_duration,
         species_match=args.species_match,
+        skip_spectrogram_cache=getattr(args, "skip_spectrogram_cache", False),
     )
     _cmd_extract_clips(clip_args)
 
@@ -292,7 +314,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_clips.add_argument("--run-id", required=False)
     p_clips.add_argument("--clip-duration", type=float, default=3.0)
     p_clips.add_argument("--species-match", default="Wild Turkey")
+    p_clips.add_argument("--skip-spectrogram-cache", action="store_true",
+                         help="Skip pre-rendering review spectrograms (review app will compute on demand)")
     p_clips.set_defaults(func=_cmd_extract_clips)
+
+    p_cache = sub.add_parser(
+        "cache-spectrograms",
+        help="Pre-render review-clip spectrograms to PNG so the review app loads instantly",
+    )
+    p_cache.add_argument("--project-root", required=True)
+    p_cache.add_argument("--run-id", required=True)
+    p_cache.add_argument("--force", action="store_true",
+                         help="Re-render every PNG even if one already exists")
+    p_cache.set_defaults(func=_cmd_cache_spectrograms)
 
     p_adjudicate = sub.add_parser("adjudicate", help="Compute inter-rater agreement")
     p_adjudicate.add_argument("--project-root", required=True)
@@ -315,6 +349,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run_all.add_argument("--prime-window-only", action="store_true")
     p_run_all.add_argument("--clip-duration", type=float, default=3.0)
     p_run_all.add_argument("--species-match", default="Wild Turkey")
+    p_run_all.add_argument("--skip-spectrogram-cache", action="store_true",
+                           help="Skip pre-rendering review spectrograms")
     p_run_all.set_defaults(func=_cmd_run_all)
 
     p_train = sub.add_parser("train", help="Train a region-level SED classifier on reviewed labels")
