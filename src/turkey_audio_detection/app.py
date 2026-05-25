@@ -554,12 +554,14 @@ def main() -> None:
         except ValueError:
             date_str = raw_dt
     conf_str = "—"
-    try:
-        _conf_f = float(row.get("confidence", None))
-        if not pd.isna(_conf_f):
-            conf_str = f"{_conf_f:.1%}"
-    except (TypeError, ValueError):
-        pass
+    _conf_raw = row.get("confidence")
+    if _conf_raw is not None:
+        try:
+            _conf_f = float(_conf_raw)
+            if not pd.isna(_conf_f):
+                conf_str = f"{_conf_f:.1%}"
+        except (TypeError, ValueError):
+            pass
     _item_id = str(row.get("item_id", ""))
 
     # Latest snapshot for this item (if any) — drives both the header summary and the canvas pre-population.

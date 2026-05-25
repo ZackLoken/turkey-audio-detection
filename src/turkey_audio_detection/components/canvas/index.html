@@ -49,6 +49,7 @@
   /* Controls row: active-label toggle + clip-level checkboxes, all inline. */
   #controls-row {
     display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    justify-content: center;
     font-size: 14px;
   }
   .ctrl-label { color: #cccccc; margin-right: 2px; }
@@ -68,10 +69,13 @@
                    cursor: pointer; user-select: none; }
   .checkbox-ctrl input { cursor: pointer; }
 
-  /* Spectrogram + drawing canvas + playhead. */
-  #canvas-wrap { position: relative; display: inline-block; line-height: 0; align-self: flex-start; }
-  #bg { display: block; user-select: none; -webkit-user-drag: none; }
-  #draw { position: absolute; top: 0; left: 0; cursor: crosshair; }
+  /* Spectrogram + drawing canvas + playhead.
+     canvas-wrap is full-width so the spectrogram matches the audio bar's extent;
+     the underlying canvas drawing buffer stays at 1200×320 px (high enough for
+     accurate annotation regardless of CSS display size). */
+  #canvas-wrap { position: relative; display: block; width: 100%; line-height: 0; }
+  #bg { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+  #draw { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
   #playhead {
     position: absolute; top: 0; height: 100%;
     width: 4px; transform: translateX(-2px);
@@ -446,10 +450,10 @@
     if (typeof args.fmaxHz === 'number') fmaxHz = args.fmaxHz;
 
     if (img.getAttribute('src') !== bgUrl) img.setAttribute('src', bgUrl);
-    img.width = w; img.height = h;
-    img.style.width = w + 'px'; img.style.height = h + 'px';
+    // Keep the canvas's drawing-buffer resolution (`canvas.width/height`) at the
+    // requested pixel size for accurate annotation, but let CSS scale both the
+    // img and the canvas to fill the iframe width via the stylesheet rules above.
     canvas.width = w; canvas.height = h;
-    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
 
     if (audioUrl && audioSrc.getAttribute('src') !== audioUrl) {
       audioSrc.setAttribute('src', audioUrl);
@@ -473,9 +477,18 @@
 
     redraw();
     updateTime();
-    // ~48 px audio + 16 px gap + ~36 px controls + canvas + 12 px padding
-    sendFrameHeight(h + 124);
+    // Defer height calc until the new spectrogram has laid out — img.onload fires
+    // when the data URI resolves; until then, send a conservative fallback so the
+    // iframe doesn't collapse during the swap.
+    sendFrameHeight((document.body.scrollHeight || 320) + 4);
   }
+
+  img.addEventListener('load', () => {
+    sendFrameHeight(document.body.scrollHeight + 4);
+  });
+  window.addEventListener('resize', () => {
+    sendFrameHeight(document.body.scrollHeight + 4);
+  });
   window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'streamlit:render') {
       applyArgs(event.data.args || {});

@@ -254,7 +254,7 @@ def _extract_clip(audio_path: Path, clip_path: Path, start_s: float, duration_s:
     else:
         start_frame = max(0, min(start_frame, info.frames - n_frames))
 
-    data, out_sr = sf.read(
+    data, out_sr = sf.read(  # type: ignore[misc]
         str(audio_path),
         start=start_frame,
         stop=start_frame + n_frames,
