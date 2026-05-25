@@ -55,6 +55,24 @@ class RunLayout:
             d.mkdir(parents=True, exist_ok=True)
 
 
+def models_root(project_root: Path) -> Path:
+    """Root directory for saved model artifacts. Project-wide, not run-scoped."""
+    return project_root / "data" / "_outputs" / "models"
+
+
+def inference_root(project_root: Path) -> Path:
+    """Root directory for inference outputs. Project-wide, not run-scoped."""
+    return project_root / "data" / "_outputs" / "inference"
+
+
+def model_dir(project_root: Path, model_id: str) -> Path:
+    return models_root(project_root) / model_id
+
+
+def inference_dir(project_root: Path, inference_id: str) -> Path:
+    return inference_root(project_root) / inference_id
+
+
 def find_aru_dirs(project_root: Path) -> list[Path]:
     data_root = project_root / "data"
     if not data_root.exists():

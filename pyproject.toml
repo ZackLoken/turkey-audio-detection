@@ -4,23 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "turkey-audio-detection"
-version = "0.2.0"
+version = "0.3.0"
 description = "Windows-first turkey audio detection and review pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "astral>=3.2",
   "birdnetlib>=0.18.0",
+  "h5py>=3.14",
   "librosa>=0.10.2",
   "matplotlib>=3.8.0",
   "numpy>=2.0.0",
   "pandas>=2.2.0",
+  "panns-inference>=0.1.1",
   "pydantic>=2.9.0",
   "pyyaml>=6.0.2",
   "scikit-learn>=1.5.0",
+  "scipy>=1.15",
   "soundfile>=0.12.1",
   "streamlit>=1.38.0",
   "streamlit-drawable-canvas>=0.9",
+  "torch>=2.5",
+  "torchaudio>=2.5",
   "tqdm>=4.66.0",
 ]
 
@@ -33,6 +38,8 @@ dev = [
 [project.scripts]
 turkey-pipeline = "turkey_audio_detection.cli:main"
 turkey-review = "turkey_audio_detection.app:main"
+turkey-train = "turkey_audio_detection.cli:main_train"
+turkey-classify = "turkey_audio_detection.cli:main_classify"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

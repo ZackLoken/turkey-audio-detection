@@ -107,3 +107,39 @@ turkey-review
 - Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
 
 > **Note:** v0.2.0 broke the v0.1.0 label-CSV schema (single `Tom/Hen/Background/Skip` column → per-region annotation + denormalized booleans). Old label CSVs are not migrated.
+
+## Training and classification (v0.3.0)
+
+Once reviewers have produced labeled clips, train a region-level sound-event-detection (SED) model and run it on raw ARU recordings.
+
+```
+# Train on one or more runs' labels. Aggregates per-reviewer CSVs via majority vote,
+# stratifies a train/val/test split by (ARU id, recording date) to prevent
+# same-recording leakage, then finetunes a PANNs CNN14 backbone with a U-Net
+# decoder + 2-channel (Tom, Hen) output head.
+turkey-train --project-root . --run-id <run_id> [--run-id <run_id> ...] \
+             --epochs 60 --batch-size 32 --learning-rate 1e-4
+
+# Run a trained model on raw audio files. Slides 3-second windows across each
+# WAV, stitches per-window 2D probability maps, then extracts connected-component
+# events as `(start_s, end_s, freq_min_hz, freq_max_hz, label, score)` rows —
+# matching the same shape as human region labels.
+turkey-classify --project-root . --model-id <model_id> \
+                --audio-glob "data/ARU_*/**/*.wav"
+```
+
+**Outputs:**
+- `data/_outputs/models/<model_id>/checkpoint.pt` — best-validation model state
+- `data/_outputs/models/<model_id>/train_metrics.csv` — epoch-level loss + per-class precision/recall/F1
+- `data/_outputs/models/<model_id>/splits.csv` — which items went to train / val / test
+- `data/_outputs/inference/<inference_id>/events/<source_filename>.csv` — one events CSV per input WAV
+- `data/_outputs/inference/<inference_id>/summary.csv` — per-file event counts + error log
+
+**Architecture:**
+- Encoder: PANNs CNN14 pretrained on AudioSet (auto-downloaded on first use to `~/panns_data/`; ~300 MB)
+- Decoder: small U-Net with skip connections, upsampling back to (n_mels × n_frames)
+- Output: per-(mel-bin, frame) sigmoid logits for Tom and Hen
+- Loss: pixel-level binary cross-entropy with positive-class weighting
+- Training augmentation: SpecAugment + Mixup + background-mix from negative clips
+
+**Aggregation:** by default `turkey-train` trains only on clips where reviewers reached consensus on `tom_present` and `hen_present`. Pass `--include-non-consensus` to train on disagreement-flagged clips as well.

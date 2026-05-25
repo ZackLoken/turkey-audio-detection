@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from turkey_audio_detection.adjudication import adjudicate_to_csv
-from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig
+from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig, InferConfig, TrainConfig
 from turkey_audio_detection.layout import RunLayout, validate_project_layout
 from turkey_audio_detection.manifest import build_stage_manifest, make_run_id, write_manifest
 from turkey_audio_detection.stages import (
@@ -166,6 +166,64 @@ def _cmd_adjudicate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_train(args: argparse.Namespace) -> int:
+    from turkey_audio_detection.training import train
+
+    project_root = Path(args.project_root).resolve()
+    model_id = args.model_id or make_run_id(prefix="model")
+    cfg = TrainConfig(
+        run_ids=list(args.run_id),
+        model_id=model_id,
+        clip_duration_s=args.clip_duration,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        include_non_consensus=args.include_non_consensus,
+        val_fraction=args.val_fraction,
+        test_fraction=args.test_fraction,
+        num_workers=args.num_workers,
+        mixup_alpha=args.mixup_alpha,
+        specaugment_enabled=not args.no_specaugment,
+        background_mix_enabled=not args.no_background_mix,
+        pos_weight=args.pos_weight,
+        seed=args.seed,
+        pretrained=not args.no_pretrained,
+    )
+    result = train(cfg, project_root)
+    _print(
+        f"train completed | model_id={result['model_id']} | "
+        f"n_train={result['n_train']} n_val={result['n_val']} n_test={result['n_test']} | "
+        f"best_avg_f1={result['best_avg_f1']:.3f}"
+    )
+    return 0
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
+    from turkey_audio_detection.inference import infer
+
+    project_root = Path(args.project_root).resolve()
+    inference_id = args.inference_id or make_run_id(prefix="inf")
+    cfg = InferConfig(
+        model_id=args.model_id,
+        audio_glob=args.audio_glob,
+        inference_id=inference_id,
+        window_duration_s=args.window_duration,
+        window_stride_s=args.window_stride,
+        score_threshold=args.score_threshold,
+        min_event_duration_s=args.min_event_duration,
+        merge_gap_s=args.merge_gap,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+    )
+    result = infer(cfg, project_root)
+    _print(
+        f"classify completed | inference_id={result['inference_id']} | "
+        f"files={result['n_files']} events={result['n_events_total']}"
+    )
+    return 0
+
+
 def _cmd_run_all(args: argparse.Namespace) -> int:
     run_id = args.run_id or make_run_id()
 
@@ -259,6 +317,42 @@ def build_parser() -> argparse.ArgumentParser:
     p_run_all.add_argument("--species-match", default="Wild Turkey")
     p_run_all.set_defaults(func=_cmd_run_all)
 
+    p_train = sub.add_parser("train", help="Train a region-level SED classifier on reviewed labels")
+    p_train.add_argument("--project-root", required=True)
+    p_train.add_argument("--run-id", action="append", required=True,
+                         help="One or more run IDs whose review queue + labels feed training")
+    p_train.add_argument("--model-id")
+    p_train.add_argument("--clip-duration", type=float, default=3.0)
+    p_train.add_argument("--epochs", type=int, default=60)
+    p_train.add_argument("--batch-size", type=int, default=32)
+    p_train.add_argument("--learning-rate", type=float, default=1e-4)
+    p_train.add_argument("--weight-decay", type=float, default=1e-4)
+    p_train.add_argument("--include-non-consensus", action="store_true")
+    p_train.add_argument("--val-fraction", type=float, default=0.15)
+    p_train.add_argument("--test-fraction", type=float, default=0.15)
+    p_train.add_argument("--num-workers", type=int, default=2)
+    p_train.add_argument("--mixup-alpha", type=float, default=0.4)
+    p_train.add_argument("--no-specaugment", action="store_true")
+    p_train.add_argument("--no-background-mix", action="store_true")
+    p_train.add_argument("--pos-weight", type=float, default=10.0)
+    p_train.add_argument("--seed", type=int, default=42)
+    p_train.add_argument("--no-pretrained", action="store_true")
+    p_train.set_defaults(func=_cmd_train)
+
+    p_classify = sub.add_parser("classify", help="Run a trained SED model on raw audio files")
+    p_classify.add_argument("--project-root", required=True)
+    p_classify.add_argument("--model-id", required=True)
+    p_classify.add_argument("--audio-glob", default="data/ARU_*/**/*.wav")
+    p_classify.add_argument("--inference-id")
+    p_classify.add_argument("--window-duration", type=float, default=3.0)
+    p_classify.add_argument("--window-stride", type=float, default=1.5)
+    p_classify.add_argument("--score-threshold", type=float, default=0.5)
+    p_classify.add_argument("--min-event-duration", type=float, default=0.2)
+    p_classify.add_argument("--merge-gap", type=float, default=0.3)
+    p_classify.add_argument("--batch-size", type=int, default=16)
+    p_classify.add_argument("--num-workers", type=int, default=2)
+    p_classify.set_defaults(func=_cmd_classify)
+
     return parser
 
 
@@ -266,6 +360,18 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     return int(args.func(args))
+
+
+def main_train() -> int:
+    """Console-script entry point for `turkey-train` — routes to the `train` subcommand."""
+    sys.argv.insert(1, "train")
+    return main()
+
+
+def main_classify() -> int:
+    """Console-script entry point for `turkey-classify` — routes to the `classify` subcommand."""
+    sys.argv.insert(1, "classify")
+    return main()
 
 
 if __name__ == "__main__":
