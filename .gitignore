@@ -1,5 +1,6 @@
 /.vscode
 /data
+/docs
 /src/turkey_audio_detection.egg-info
 /src/turkey_audio_detection/__pycache__
 /tests/__pycache__
