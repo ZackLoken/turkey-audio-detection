@@ -2,7 +2,7 @@
 
 Modular pipeline for detecting and reviewing Wild Turkey vocalizations in ARU (autonomous recording unit) audio. Runs BirdNET on WAV recordings, extracts candidate clips, and provides a Streamlit app for labeling and inter-rater adjudication.
 
-The labeling stage produces a reviewed Tom / Hen / Background dataset. BirdNET performs the candidate detection; training a turkey-specific classifier on the reviewed clips is a planned next phase.
+The labeling stage produces a reviewed dataset of time–frequency regions on each 3-second candidate clip, each region tagged Tom or Hen. Clips with no turkey are saved with an empty region list (with an optional "other birds present" flag). BirdNET performs the candidate detection; training a turkey-specific classifier on the reviewed regions is a planned next phase.
 
 ## Data layout
 
@@ -60,7 +60,7 @@ project-root/
    turkey-review
    ```
 
-   In the sidebar enter your **project root**, the **run ID** from step 4, and a **reviewer ID** (e.g. your name). Label each clip as Tom, Hen, Background, or Skip — labels autosave as you go.
+   In the sidebar enter your **project root**, the **run ID** from step 4, and a **reviewer name**. For each clip, draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick **Other birds present** / **Unsure** when relevant, then click **Save & Next**. See the [Review app](#review-app) section below for details.
 
 **Troubleshooting:**
 - If `birdnetlib` fails to import, confirm ffmpeg is on your PATH: `conda install -c conda-forge ffmpeg`
@@ -94,8 +94,16 @@ turkey-pipeline adjudicate --project-root .
 turkey-review
 ```
 
-- **Sidebar:** set project root, select run ID, enter reviewer ID and display name
-- **Main panel:** audio player + mel spectrogram for each queued clip
-- **Buttons:** Tom / Hen / Background / Skip — autosaves and advances to next clip
-- Labels are written to `data/_outputs/review/labels/<reviewer_id>.csv`
-- Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa and a disagreements export
+- **Sidebar:** set project root, select run ID, enter reviewer name
+- **Main panel:** audio player, full-band reference spectrogram, and a drawable mel spectrogram pinned to 200–6000 Hz (the turkey vocal band)
+- **Region annotation:**
+  - Pick the active label (`Tom` or `Hen`) — switch mid-clip to mix both kinds of calls in one save
+  - Drag rectangles on the spectrogram around each call; the rectangle's x-extent encodes time, y-extent encodes frequency
+  - Tick **Snap to full frequency band** when you don't want to bother with the y-axis (regions are persisted with `freq_min_hz=200, freq_max_hz=6000`)
+  - Tick **Other birds present** if the clip contains non-turkey vocalizations alongside (or instead of) the turkey calls
+  - Tick **Unsure** if you can't reliably tell — by default `adjudicate` excludes unsure rows from agreement stats
+- **Save & Next** writes one row to `data/_outputs/review/labels/<reviewer_id>.csv` and advances. **Previous** revisits a labeled clip (regions re-render so you can edit them). **Reset canvas** clears the current clip's drawings. **Jump to first unlabeled** seeks to the next clip without a saved snapshot.
+- Each CSV row contains: `item_id, detection_id, reviewer_id, reviewer_name, regions_json, other_birds_present, unsure, tom_present, hen_present, label_timestamp_utc, session_id`. `regions_json` is a JSON list of `{start_s, end_s, freq_min_hz, freq_max_hz, label}` objects; `tom_present` / `hen_present` are denormalized for cheap filtering.
+- Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
+
+> **Note:** v0.2.0 broke the v0.1.0 label-CSV schema (single `Tom/Hen/Background/Skip` column → per-region annotation + denormalized booleans). Old label CSVs are not migrated.

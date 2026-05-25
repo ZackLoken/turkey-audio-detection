@@ -9,6 +9,9 @@ import pandas as pd
 from sklearn.metrics import cohen_kappa_score
 
 
+PRESENCE_ATTRIBUTES = ("tom_present", "hen_present")
+
+
 def _load_label_files(labels_dir: Path) -> pd.DataFrame:
     files = sorted(labels_dir.glob("*.csv"))
     if not files:
@@ -17,8 +20,7 @@ def _load_label_files(labels_dir: Path) -> pd.DataFrame:
     for path in files:
         df = pd.read_csv(path)
         if "reviewer_id" not in df.columns:
-            reviewer_id = path.stem
-            df["reviewer_id"] = reviewer_id
+            df["reviewer_id"] = path.stem
         frames.append(df)
     return pd.concat(frames, ignore_index=True)
 
@@ -31,72 +33,113 @@ def _latest_labels(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop_duplicates(subset=["reviewer_id", "item_id"], keep="last")
 
 
-def compute_pairwise_kappa(labels_df: pd.DataFrame, include_skip: bool = False) -> pd.DataFrame:
+def _per_attribute_view(df: pd.DataFrame, attribute: str) -> pd.DataFrame:
+    """Return a copy of df with a synthetic `label` column derived from one boolean attribute."""
+    out = df.copy()
+    out["label"] = out[attribute].fillna(0).astype(int).astype(str)
+    return out
+
+
+def _filter_unsure(df: pd.DataFrame, include_unsure: bool) -> pd.DataFrame:
+    if include_unsure or "unsure" not in df.columns:
+        return df
+    return df[df["unsure"].fillna(0).astype(int) == 0].copy()
+
+
+def compute_pairwise_kappa(labels_df: pd.DataFrame, include_unsure: bool = False) -> pd.DataFrame:
+    columns = ["attribute", "reviewer_a", "reviewer_b", "n_items", "cohen_kappa"]
     if labels_df.empty:
-        return pd.DataFrame(columns=["reviewer_a", "reviewer_b", "n_items", "cohen_kappa"])
+        return pd.DataFrame(columns=columns)
 
-    df = _latest_labels(labels_df)
-    if not include_skip:
-        df = df[df["label"] != "Skip"].copy()
-
-    reviewers = sorted(df["reviewer_id"].dropna().unique().tolist())
+    base = _filter_unsure(_latest_labels(labels_df), include_unsure)
     rows: list[dict] = []
 
-    for a, b in combinations(reviewers, 2):
-        a_raw = df[df["reviewer_id"] == a][["item_id", "label"]].copy()
-        b_raw = df[df["reviewer_id"] == b][["item_id", "label"]].copy()
-        a_df = pd.DataFrame({"item_id": a_raw["item_id"], "label_a": a_raw["label"]})
-        b_df = pd.DataFrame({"item_id": b_raw["item_id"], "label_b": b_raw["label"]})
-        merged = a_df.merge(b_df, on="item_id", how="inner")
-        if merged.empty:
-            rows.append({"reviewer_a": a, "reviewer_b": b, "n_items": 0, "cohen_kappa": None})
+    for attribute in PRESENCE_ATTRIBUTES:
+        if attribute not in base.columns:
             continue
-        kappa = float(cohen_kappa_score(merged["label_a"], merged["label_b"]))
-        rows.append({"reviewer_a": a, "reviewer_b": b, "n_items": int(len(merged)), "cohen_kappa": kappa})
+        df = _per_attribute_view(base, attribute)
+        reviewers = sorted(df["reviewer_id"].dropna().unique().tolist())
 
-    return pd.DataFrame(rows, columns=["reviewer_a", "reviewer_b", "n_items", "cohen_kappa"])
-
-
-def compute_disagreements(labels_df: pd.DataFrame, include_skip: bool = False) -> pd.DataFrame:
-    if labels_df.empty:
-        return pd.DataFrame(columns=["item_id", "reviewer_a", "label_a", "reviewer_b", "label_b"])
-
-    df = _latest_labels(labels_df)
-    if not include_skip:
-        df = df[df["label"] != "Skip"].copy()
-
-    rows: list[dict] = []
-    reviewers = sorted(df["reviewer_id"].dropna().unique().tolist())
-    for a, b in combinations(reviewers, 2):
-        a_raw = df[df["reviewer_id"] == a][["item_id", "label"]].copy()
-        b_raw = df[df["reviewer_id"] == b][["item_id", "label"]].copy()
-        a_df = pd.DataFrame({"item_id": a_raw["item_id"], "label_a": a_raw["label"]})
-        b_df = pd.DataFrame({"item_id": b_raw["item_id"], "label_b": b_raw["label"]})
-        merged = a_df.merge(b_df, on="item_id", how="inner")
-        mismatches = merged[merged["label_a"] != merged["label_b"]]
-        for _, row in mismatches.iterrows():
+        for a, b in combinations(reviewers, 2):
+            a_df = df[df["reviewer_id"] == a][["item_id", "label"]].rename(
+                columns={"label": "label_a"}
+            )
+            b_df = df[df["reviewer_id"] == b][["item_id", "label"]].rename(
+                columns={"label": "label_b"}
+            )
+            merged = a_df.merge(b_df, on="item_id", how="inner")
+            if merged.empty:
+                rows.append(
+                    {
+                        "attribute": attribute,
+                        "reviewer_a": a,
+                        "reviewer_b": b,
+                        "n_items": 0,
+                        "cohen_kappa": None,
+                    }
+                )
+                continue
+            kappa = float(cohen_kappa_score(merged["label_a"], merged["label_b"]))
             rows.append(
                 {
-                    "item_id": row["item_id"],
+                    "attribute": attribute,
                     "reviewer_a": a,
-                    "label_a": row["label_a"],
                     "reviewer_b": b,
-                    "label_b": row["label_b"],
+                    "n_items": int(len(merged)),
+                    "cohen_kappa": kappa,
                 }
             )
 
-    return pd.DataFrame(rows, columns=["item_id", "reviewer_a", "label_a", "reviewer_b", "label_b"])
+    return pd.DataFrame(rows, columns=columns)
+
+
+def compute_disagreements(labels_df: pd.DataFrame, include_unsure: bool = False) -> pd.DataFrame:
+    columns = ["attribute", "item_id", "reviewer_a", "label_a", "reviewer_b", "label_b"]
+    if labels_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    base = _filter_unsure(_latest_labels(labels_df), include_unsure)
+    rows: list[dict] = []
+
+    for attribute in PRESENCE_ATTRIBUTES:
+        if attribute not in base.columns:
+            continue
+        df = _per_attribute_view(base, attribute)
+        reviewers = sorted(df["reviewer_id"].dropna().unique().tolist())
+
+        for a, b in combinations(reviewers, 2):
+            a_df = df[df["reviewer_id"] == a][["item_id", "label"]].rename(
+                columns={"label": "label_a"}
+            )
+            b_df = df[df["reviewer_id"] == b][["item_id", "label"]].rename(
+                columns={"label": "label_b"}
+            )
+            merged = a_df.merge(b_df, on="item_id", how="inner")
+            mismatches = merged[merged["label_a"] != merged["label_b"]]
+            for _, row in mismatches.iterrows():
+                rows.append(
+                    {
+                        "attribute": attribute,
+                        "item_id": row["item_id"],
+                        "reviewer_a": a,
+                        "label_a": row["label_a"],
+                        "reviewer_b": b,
+                        "label_b": row["label_b"],
+                    }
+                )
+
+    return pd.DataFrame(rows, columns=columns)
 
 
 def adjudicate_to_csv(
     labels_dir: Path,
     kappa_out: Path,
     disagreements_out: Path,
-    include_skip: bool = False,
+    include_unsure: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     labels_df = _load_label_files(labels_dir)
-    kappa_df = compute_pairwise_kappa(labels_df, include_skip=include_skip)
-    disagreements_df = compute_disagreements(labels_df, include_skip=include_skip)
+    kappa_df = compute_pairwise_kappa(labels_df, include_unsure=include_unsure)
+    disagreements_df = compute_disagreements(labels_df, include_unsure=include_unsure)
 
     kappa_out.parent.mkdir(parents=True, exist_ok=True)
     disagreements_out.parent.mkdir(parents=True, exist_ok=True)

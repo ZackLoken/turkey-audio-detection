@@ -4,15 +4,34 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import json
 import uuid
 
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 
-from turkey_audio_detection.schemas import VALID_LABELS
+from turkey_audio_detection.schemas import REGION_LABELS
+
+
+CANVAS_FMIN_HZ = 200.0
+CANVAS_FMAX_HZ = 6000.0
+CANVAS_SR = 48000
+CANVAS_WIDTH = 1200
+CANVAS_HEIGHT = 320
+N_MELS_CANVAS = 128
+N_FFT_CANVAS = 2048
+HOP_LENGTH_CANVAS = 512
+DEFAULT_CLIP_DURATION_S = 3.0
+
+STROKE_COLOR_TOM = "#b8922e"  # gold
+STROKE_COLOR_HEN = "#a84830"  # terracotta
+FILL_COLOR = "rgba(255, 255, 255, 0.15)"
 
 
 def _default_project_root() -> Path:
@@ -59,17 +78,30 @@ def _load_existing_labels(project_root: Path, reviewer_id: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+LABEL_COLUMNS = [
+    "item_id",
+    "detection_id",
+    "reviewer_id",
+    "reviewer_name",
+    "regions_json",
+    "other_birds_present",
+    "unsure",
+    "tom_present",
+    "hen_present",
+    "label_timestamp_utc",
+    "session_id",
+]
+
+
 def _append_label_row(project_root: Path, row: dict) -> None:
     path = _labels_path(project_root, row["reviewer_id"])
     write_header = not path.exists()
-    columns = ["item_id", "detection_id", "reviewer_id", "reviewer_name",
-               "label", "label_timestamp_utc", "session_id", "app_version"]
     with path.open("a", encoding="utf-8", newline="") as f:
         import csv
-        writer = csv.DictWriter(f, fieldnames=columns)
+        writer = csv.DictWriter(f, fieldnames=LABEL_COLUMNS)
         if write_header:
             writer.writeheader()
-        writer.writerow({k: row.get(k, "") for k in columns})
+        writer.writerow({k: row.get(k, "") for k in LABEL_COLUMNS})
 
 
 def _latest_by_item(labels_df: pd.DataFrame) -> pd.DataFrame:
@@ -137,6 +169,191 @@ def _render_spectrogram(audio_path: Path) -> None:
     )
 
 
+@st.cache_data(show_spinner=False)
+def _spectrogram_for_canvas(audio_path_str: str, width_px: int, height_px: int) -> Image.Image | None:
+    """Render an axis-free mel spectrogram pinned to the canvas band, sized for st_canvas."""
+    try:
+        y, sr = librosa.load(audio_path_str, sr=CANVAS_SR, mono=True)
+    except Exception:
+        return None
+    if y.size == 0:
+        return None
+    melspec = librosa.feature.melspectrogram(
+        y=y,
+        sr=sr,
+        n_fft=N_FFT_CANVAS,
+        hop_length=HOP_LENGTH_CANVAS,
+        n_mels=N_MELS_CANVAS,
+        fmin=CANVAS_FMIN_HZ,
+        fmax=CANVAS_FMAX_HZ,
+    )
+    db = librosa.power_to_db(melspec, ref=max(1e-6, float(melspec.max())))
+
+    dpi = 100
+    fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi, facecolor=_BG)
+    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+    ax.set_facecolor(_BG)
+    librosa.display.specshow(
+        db,
+        sr=sr,
+        hop_length=HOP_LENGTH_CANVAS,
+        x_axis=None,
+        y_axis=None,
+        ax=ax,
+        fmin=CANVAS_FMIN_HZ,
+        fmax=CANVAS_FMAX_HZ,
+    )
+    ax.set_axis_off()
+    import io as _io
+    buf = _io.BytesIO()
+    fig.savefig(buf, format="png", pad_inches=0, facecolor=_BG)
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf).convert("RGB").resize((width_px, height_px))
+
+
+def pixel_y_to_hz(py: float, canvas_h: int, fmin_hz: float, fmax_hz: float) -> float:
+    """Convert a canvas pixel-y (0 at top = high frequency) into Hz on the mel scale."""
+    mel_min = librosa.hz_to_mel(fmin_hz)
+    mel_max = librosa.hz_to_mel(fmax_hz)
+    frac = max(0.0, min(1.0, 1.0 - (py / canvas_h)))
+    mel = mel_min + frac * (mel_max - mel_min)
+    return float(librosa.mel_to_hz(mel))
+
+
+def hz_to_pixel_y(hz: float, canvas_h: int, fmin_hz: float, fmax_hz: float) -> float:
+    """Inverse of pixel_y_to_hz — used to rebuild canvas rectangles from saved regions."""
+    mel_min = librosa.hz_to_mel(fmin_hz)
+    mel_max = librosa.hz_to_mel(fmax_hz)
+    mel_target = librosa.hz_to_mel(max(fmin_hz, min(fmax_hz, hz)))
+    frac = (mel_target - mel_min) / (mel_max - mel_min) if mel_max > mel_min else 0.0
+    return float((1.0 - frac) * canvas_h)
+
+
+def rect_to_region(
+    obj: dict,
+    canvas_w: int,
+    canvas_h: int,
+    clip_duration_s: float,
+    fmin_hz: float,
+    fmax_hz: float,
+    snap_freq: bool,
+) -> dict | None:
+    """Convert one drawable-canvas rect into a region dict, or None if degenerate."""
+    if obj.get("type") != "rect":
+        return None
+    left = float(obj.get("left", 0.0))
+    top = float(obj.get("top", 0.0))
+    width = float(obj.get("width", 0.0)) * float(obj.get("scaleX", 1.0))
+    height = float(obj.get("height", 0.0)) * float(obj.get("scaleY", 1.0))
+    if width <= 0 or height <= 0:
+        return None
+
+    start_s = max(0.0, min(clip_duration_s, (left / canvas_w) * clip_duration_s))
+    end_s = max(0.0, min(clip_duration_s, ((left + width) / canvas_w) * clip_duration_s))
+    if end_s <= start_s:
+        return None
+
+    if snap_freq:
+        freq_min_hz = float(fmin_hz)
+        freq_max_hz = float(fmax_hz)
+    else:
+        freq_min_hz = pixel_y_to_hz(top + height, canvas_h, fmin_hz, fmax_hz)
+        freq_max_hz = pixel_y_to_hz(top, canvas_h, fmin_hz, fmax_hz)
+    if freq_max_hz <= freq_min_hz:
+        return None
+
+    stroke = str(obj.get("stroke", "")).lower()
+    if stroke == STROKE_COLOR_TOM.lower():
+        label = "Tom"
+    elif stroke == STROKE_COLOR_HEN.lower():
+        label = "Hen"
+    else:
+        # Unknown stroke — fall back to Tom (better than dropping a real annotation).
+        label = "Tom"
+
+    return {
+        "start_s": round(float(start_s), 4),
+        "end_s": round(float(end_s), 4),
+        "freq_min_hz": round(float(freq_min_hz), 2),
+        "freq_max_hz": round(float(freq_max_hz), 2),
+        "label": label,
+    }
+
+
+def region_to_rect(
+    region: dict,
+    canvas_w: int,
+    canvas_h: int,
+    clip_duration_s: float,
+    fmin_hz: float,
+    fmax_hz: float,
+) -> dict:
+    """Build a fabric.js rect object suitable for st_canvas initial_drawing."""
+    left = (region["start_s"] / clip_duration_s) * canvas_w
+    width = ((region["end_s"] - region["start_s"]) / clip_duration_s) * canvas_w
+    top = hz_to_pixel_y(region["freq_max_hz"], canvas_h, fmin_hz, fmax_hz)
+    bottom = hz_to_pixel_y(region["freq_min_hz"], canvas_h, fmin_hz, fmax_hz)
+    height = max(1.0, bottom - top)
+    stroke = STROKE_COLOR_TOM if region.get("label") == "Tom" else STROKE_COLOR_HEN
+    return {
+        "type": "rect",
+        "left": float(left),
+        "top": float(top),
+        "width": float(width),
+        "height": float(height),
+        "scaleX": 1.0,
+        "scaleY": 1.0,
+        "angle": 0,
+        "fill": FILL_COLOR,
+        "stroke": stroke,
+        "strokeWidth": 2,
+        "strokeUniform": True,
+    }
+
+
+def regions_to_initial_drawing(
+    regions: list[dict],
+    canvas_w: int,
+    canvas_h: int,
+    clip_duration_s: float,
+    fmin_hz: float,
+    fmax_hz: float,
+) -> dict:
+    return {
+        "version": "5.3.0",
+        "objects": [
+            region_to_rect(r, canvas_w, canvas_h, clip_duration_s, fmin_hz, fmax_hz)
+            for r in regions
+        ],
+    }
+
+
+def derive_presence(regions: list[dict]) -> tuple[int, int]:
+    """Return (tom_present, hen_present) booleans derived from a region list."""
+    tom = int(any(r.get("label") == "Tom" for r in regions))
+    hen = int(any(r.get("label") == "Hen" for r in regions))
+    return tom, hen
+
+
+def _parse_regions(value) -> list[dict]:
+    """Parse a regions_json cell from CSV, tolerating empty/NaN values."""
+    if value is None:
+        return []
+    if isinstance(value, float) and np.isnan(value):
+        return []
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return []
+    try:
+        parsed = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [r for r in parsed if isinstance(r, dict)]
+
+
 def _inject_css() -> None:
     st.markdown(
         """
@@ -162,41 +379,6 @@ def _inject_css() -> None:
         section[data-testid="stSidebar"] div[data-testid="stButton"] {
             display: flex;
             justify-content: center;
-        }
-
-        /* Label button colors — identified by being in the only 4-column row.
-           Nav buttons use 3 columns so they are not affected.
-           Colors are intentionally muted/desaturated for comfortable repeated use. */
-        div[data-testid="stHorizontalBlock"]:has(
-            > div[data-testid="stColumn"]:nth-child(4)
-        ) > div[data-testid="stColumn"] button {
-            font-size: 1.05rem !important;
-            font-weight: 700 !important;
-            border: none !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(
-            > div[data-testid="stColumn"]:nth-child(4)
-        ) > div[data-testid="stColumn"]:nth-child(1) button {
-            background-color: #b8922e !important;  /* muted gold */
-            color: #f5f0e8 !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(
-            > div[data-testid="stColumn"]:nth-child(4)
-        ) > div[data-testid="stColumn"]:nth-child(2) button {
-            background-color: #a84830 !important;  /* muted terracotta */
-            color: #f5f0ee !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(
-            > div[data-testid="stColumn"]:nth-child(4)
-        ) > div[data-testid="stColumn"]:nth-child(3) button {
-            background-color: #52286b !important;  /* muted plum */
-            color: #f0ecf5 !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(
-            > div[data-testid="stColumn"]:nth-child(4)
-        ) > div[data-testid="stColumn"]:nth-child(4) button {
-            background-color: #5e5e5e !important;  /* dark gray */
-            color: #f0f0f0 !important;
         }
         </style>
         """,
@@ -298,12 +480,39 @@ def main() -> None:
     except (TypeError, ValueError):
         pass
     _item_id = str(row.get("item_id", ""))
-    _existing_label = "No Label"
+
+    # Latest snapshot for this item (if any) — drives both the header summary and the canvas pre-population.
+    _latest_row = None
     if not labels_df.empty and "item_id" in labels_df.columns:
         _latest = _latest_by_item(labels_df)
         _match = _latest[_latest["item_id"].astype(str) == _item_id]
         if not _match.empty:
-            _existing_label = str(_match.iloc[0]["label"])
+            _latest_row = _match.iloc[0]
+
+    existing_regions: list[dict] = (
+        _parse_regions(_latest_row.get("regions_json", "")) if _latest_row is not None else []
+    )
+
+    def _format_summary(latest_row, regions: list[dict]) -> str:
+        if latest_row is None:
+            return "No Label"
+        tom_n = sum(1 for r in regions if r.get("label") == "Tom")
+        hen_n = sum(1 for r in regions if r.get("label") == "Hen")
+        parts: list[str] = []
+        if tom_n:
+            parts.append(f"{tom_n}×Tom")
+        if hen_n:
+            parts.append(f"{hen_n}×Hen")
+        if not parts:
+            parts.append("No turkey")
+        if int(latest_row.get("other_birds_present", 0) or 0):
+            parts.append("+other birds")
+        if int(latest_row.get("unsure", 0) or 0):
+            parts.append("(unsure)")
+        return " ".join(parts)
+
+    _existing_label = _format_summary(_latest_row, existing_regions)
+
     st.html(
         f'<div style="display:flex;justify-content:space-between;align-items:center;'
         f'width:100%;font-size:1.1rem;margin:0.15rem 0;color:inherit">'
@@ -316,61 +525,150 @@ def main() -> None:
     )
 
     clip_path = Path(str(row.get("clip_path", "")))
-    if clip_path.exists():
-        import base64
-        _audio_b64 = base64.b64encode(clip_path.read_bytes()).decode()
-        st.html(
-            f'<body style="margin:0;padding:0;background:{_BG}">'
-            f'<audio id="clip" controls '
-            f'style="width:100%;color-scheme:dark">'
-            f'<source src="data:audio/wav;base64,{_audio_b64}" type="audio/wav">'
-            f'</audio>'
-            f'<script>'
-            f'var a=document.getElementById("clip");'
-            f'a.load();'
-            f'a.play().catch(function(){{}});'
-            f'</script>'
-            f'</body>',
-            unsafe_allow_javascript=True,
-        )
-
-        # Label buttons ABOVE the spectrogram
-        label_cols = st.columns(4)
-        labels_map = [
-            ("Tom",        "label-btn-tom"),
-            ("Hen",        "label-btn-hen"),
-            ("Background", "label-btn-background"),
-            ("Skip",       "label-btn-skip"),
-        ]
-        for i, (label, _css_class) in enumerate(labels_map):
-            with label_cols[i]:
-                if st.button(label, width='stretch', key=f"label_{label}"):
-                    out_row = {
-                        "item_id": str(row.get("item_id", "")),
-                        "detection_id": str(row.get("detection_id", "")),
-                        "reviewer_id": reviewer_id,
-                        "reviewer_name": reviewer_id,
-                        "label": label,
-                        "label_timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                        "session_id": st.session_state.get("session_id") or str(uuid.uuid4()),
-                        "app_version": "0.1.0",
-                    }
-                    _append_label_row(project_root, out_row)
-                    st.session_state["cursor"] = min(cursor + 1, total - 1)
-                    st.rerun()
-
-        _render_spectrogram(clip_path)
-    else:
+    if not clip_path.exists():
         st.error(f"Clip not found: {clip_path}")
+        return
 
-    nav1, nav2, nav3 = st.columns(3)
-    if nav1.button("Previous", width='stretch'):
+    clip_duration_s = float(row.get("clip_end_s", 0.0)) - float(row.get("clip_start_s", 0.0))
+    if clip_duration_s <= 0:
+        clip_duration_s = DEFAULT_CLIP_DURATION_S
+
+    import base64
+    _audio_b64 = base64.b64encode(clip_path.read_bytes()).decode()
+    st.html(
+        f'<body style="margin:0;padding:0;background:{_BG}">'
+        f'<audio id="clip" controls '
+        f'style="width:100%;color-scheme:dark">'
+        f'<source src="data:audio/wav;base64,{_audio_b64}" type="audio/wav">'
+        f'</audio>'
+        f'<script>'
+        f'var a=document.getElementById("clip");'
+        f'a.load();'
+        f'a.play().catch(function(){{}});'
+        f'</script>'
+        f'</body>',
+        unsafe_allow_javascript=True,
+    )
+
+    # Full-band reference spectrogram (small strip).
+    _render_spectrogram(clip_path)
+
+    # Per-clip widget state defaults — seed once per item_id from the latest snapshot.
+    init_key = f"_init_{_item_id}"
+    if not st.session_state.get(init_key):
+        st.session_state[f"active_label_{_item_id}"] = "Tom"
+        st.session_state[f"snap_freq_{_item_id}"] = False
+        st.session_state[f"other_birds_{_item_id}"] = bool(
+            int(_latest_row.get("other_birds_present", 0) or 0) if _latest_row is not None else 0
+        )
+        st.session_state[f"unsure_{_item_id}"] = bool(
+            int(_latest_row.get("unsure", 0) or 0) if _latest_row is not None else 0
+        )
+        st.session_state[f"canvas_nonce_{_item_id}"] = 0
+        st.session_state[init_key] = True
+
+    ctrl_cols = st.columns([2, 2, 2, 2])
+    with ctrl_cols[0]:
+        active_label = st.radio(
+            "Active label",
+            options=["Tom", "Hen"],
+            horizontal=True,
+            key=f"active_label_{_item_id}",
+        )
+    with ctrl_cols[1]:
+        snap_freq = st.checkbox("Snap to full frequency band", key=f"snap_freq_{_item_id}")
+    with ctrl_cols[2]:
+        other_birds_present = st.checkbox("Other birds present", key=f"other_birds_{_item_id}")
+    with ctrl_cols[3]:
+        unsure = st.checkbox("Unsure", key=f"unsure_{_item_id}")
+
+    stroke_color = STROKE_COLOR_TOM if active_label == "Tom" else STROKE_COLOR_HEN
+
+    spec_pil = _spectrogram_for_canvas(str(clip_path), CANVAS_WIDTH, CANVAS_HEIGHT)
+    if spec_pil is None:
+        st.warning("Unable to render canvas spectrogram.")
+        return
+
+    initial_drawing = regions_to_initial_drawing(
+        existing_regions,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        clip_duration_s,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+    ) if existing_regions else None
+
+    nonce = st.session_state.get(f"canvas_nonce_{_item_id}", 0)
+    canvas_result = st_canvas(
+        fill_color=FILL_COLOR,
+        stroke_width=2,
+        stroke_color=stroke_color,
+        background_image=spec_pil,
+        update_streamlit=True,
+        height=CANVAS_HEIGHT,
+        width=CANVAS_WIDTH,
+        drawing_mode="rect",
+        initial_drawing=initial_drawing,
+        key=f"canvas_{_item_id}_{nonce}",
+    )
+
+    st.caption(
+        f"Canvas band: {int(CANVAS_FMIN_HZ)}–{int(CANVAS_FMAX_HZ)} Hz   ·   "
+        f"clip duration: {clip_duration_s:.2f} s   ·   "
+        f"draw rectangles around each Tom / Hen call (switch label before drawing)."
+    )
+
+    action_cols = st.columns([2, 1, 1, 1])
+    save_clicked = action_cols[0].button("Save & Next", type="primary", width="stretch")
+    prev_clicked = action_cols[1].button("Previous", width="stretch")
+    discard_clicked = action_cols[2].button("Reset canvas", width="stretch")
+    jump_clicked = action_cols[3].button("Jump to first unlabeled", width="stretch")
+
+    if save_clicked:
+        raw_objects = []
+        if canvas_result is not None and canvas_result.json_data is not None:
+            raw_objects = canvas_result.json_data.get("objects", []) or []
+        regions: list[dict] = []
+        for obj in raw_objects:
+            region = rect_to_region(
+                obj,
+                CANVAS_WIDTH,
+                CANVAS_HEIGHT,
+                clip_duration_s,
+                CANVAS_FMIN_HZ,
+                CANVAS_FMAX_HZ,
+                snap_freq,
+            )
+            if region is not None:
+                regions.append(region)
+
+        tom_present, hen_present = derive_presence(regions)
+        out_row = {
+            "item_id": _item_id,
+            "detection_id": str(row.get("detection_id", "")),
+            "reviewer_id": reviewer_id,
+            "reviewer_name": reviewer_id,
+            "regions_json": json.dumps(regions, separators=(",", ":")),
+            "other_birds_present": int(bool(other_birds_present)),
+            "unsure": int(bool(unsure)),
+            "tom_present": tom_present,
+            "hen_present": hen_present,
+            "label_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "session_id": st.session_state.get("session_id") or str(uuid.uuid4()),
+        }
+        _append_label_row(project_root, out_row)
+        st.session_state["cursor"] = min(cursor + 1, total - 1)
+        st.rerun()
+
+    if prev_clicked:
         st.session_state["cursor"] = max(0, cursor - 1)
         st.rerun()
-    if nav2.button("Next", width='stretch'):
-        st.session_state["cursor"] = min(total - 1, cursor + 1)
+
+    if discard_clicked:
+        st.session_state[f"canvas_nonce_{_item_id}"] = nonce + 1
         st.rerun()
-    if nav3.button("Jump to first unlabeled", width='stretch'):
+
+    if jump_clicked:
         labels_df = _load_existing_labels(project_root, reviewer_id)
         st.session_state["cursor"] = _current_queue_index(queue_df, labels_df)
         st.rerun()

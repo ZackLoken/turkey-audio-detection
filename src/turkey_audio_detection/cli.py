@@ -141,14 +141,14 @@ def _cmd_adjudicate(args: argparse.Namespace) -> int:
         labels_dir=labels_dir,
         kappa_out=kappa_out,
         disagreements_out=disagreements_out,
-        include_skip=args.include_skip,
+        include_unsure=args.include_unsure,
     )
 
     manifest = build_stage_manifest(
         run_id=run_id,
         stage="adjudicate",
         project_root=project_root,
-        config_snapshot={"include_skip": args.include_skip},
+        config_snapshot={"include_unsure": args.include_unsure},
         stage_outputs={
             "labels_dir": str(labels_dir),
             "kappa_summary_csv": str(kappa_out),
@@ -240,7 +240,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_adjudicate.add_argument("--project-root", required=True)
     p_adjudicate.add_argument("--run-id", required=False)
     p_adjudicate.add_argument("--labels-dir", required=False)
-    p_adjudicate.add_argument("--include-skip", action="store_true")
+    p_adjudicate.add_argument("--include-unsure", action="store_true")
     p_adjudicate.set_defaults(func=_cmd_adjudicate)
 
     p_run_all = sub.add_parser("run-all", help="Run index -> BirdNET -> clip extraction")

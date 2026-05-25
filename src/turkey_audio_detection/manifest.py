@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import hashlib
 
+from turkey_audio_detection import __version__ as _PACKAGE_VERSION
+
 
 def file_sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -57,7 +59,7 @@ def build_stage_manifest(
         "input_file_count": input_file_count,
         "input_content_hash": input_content_hash,
         "stage_outputs": stage_outputs,
-        "package_version": "0.1.0",
+        "package_version": _PACKAGE_VERSION,
         "python_version": python_version,
         "birdnet_version": birdnet_version,
         "status": status,

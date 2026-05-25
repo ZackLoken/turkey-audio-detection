@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "turkey-audio-detection"
-version = "0.1.0"
+version = "0.2.0"
 description = "Windows-first turkey audio detection and review pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,6 +20,7 @@ dependencies = [
   "scikit-learn>=1.5.0",
   "soundfile>=0.12.1",
   "streamlit>=1.38.0",
+  "streamlit-drawable-canvas>=0.9",
   "tqdm>=4.66.0",
 ]
 

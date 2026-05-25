@@ -1,8 +1,8 @@
 """Tests for resume/idempotency behavior per plan verification item 7."""
 
 from pathlib import Path
-from datetime import timezone, datetime
 
+import json
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -52,8 +52,8 @@ def test_extract_clips_no_duplicate_queue_rows_on_rerun(tmp_path: Path) -> None:
     _make_wav(wav)
     _make_detections(layout, wav)
 
-    q1 = stage_extract_clips(layout, ClipConfig())
-    q2 = stage_extract_clips(layout, ClipConfig())
+    stage_extract_clips(layout, ClipConfig())
+    stage_extract_clips(layout, ClipConfig())
 
     # queue CSV is replace-on-rerun for same run_id
     final_queue = pd.read_csv(layout.queue_dir / "review_queue.csv")
@@ -62,8 +62,8 @@ def test_extract_clips_no_duplicate_queue_rows_on_rerun(tmp_path: Path) -> None:
 
 
 def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
-    """Appending a second label for the same item_id must preserve both rows raw
-    but latest-wins must resolve to the most recent label."""
+    """Appending a second snapshot for the same item_id must preserve both raw rows but
+    latest-by-timestamp must resolve to the most recent snapshot's presence flags."""
     from turkey_audio_detection.app import _append_label_row, _latest_by_item
 
     project_root = tmp_path
@@ -72,13 +72,26 @@ def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
         "item_id": "itm_x",
         "detection_id": "det_x",
         "reviewer_id": "reviewer_1",
-        "reviewer_name": "Tester",
-        "label": "Tom",
+        "reviewer_name": "reviewer_1",
+        "regions_json": json.dumps(
+            [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}],
+            separators=(",", ":"),
+        ),
+        "other_birds_present": 1,
+        "unsure": 0,
+        "tom_present": 1,
+        "hen_present": 0,
         "label_timestamp_utc": "2026-04-24T00:00:00+00:00",
         "session_id": "s1",
-        "app_version": "0.1.0",
     }
-    updated_row = {**base_row, "label": "Hen", "label_timestamp_utc": "2026-04-24T00:05:00+00:00"}
+    # Reviewer changes their mind: removes the Tom region, marks unsure.
+    updated_row = {
+        **base_row,
+        "regions_json": json.dumps([], separators=(",", ":")),
+        "tom_present": 0,
+        "unsure": 1,
+        "label_timestamp_utc": "2026-04-24T00:05:00+00:00",
+    }
 
     _append_label_row(project_root, base_row)
     _append_label_row(project_root, updated_row)
@@ -89,4 +102,5 @@ def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
 
     resolved = _latest_by_item(all_labels)
     assert len(resolved) == 1
-    assert resolved.iloc[0]["label"] == "Hen", "Latest-wins must resolve to the most recent label"
+    assert int(resolved.iloc[0]["tom_present"]) == 0
+    assert int(resolved.iloc[0]["unsure"]) == 1
