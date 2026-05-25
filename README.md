@@ -2,6 +2,8 @@
 
 Modular pipeline for detecting and reviewing Wild Turkey vocalizations in ARU (autonomous recording unit) audio. Runs BirdNET on WAV recordings, extracts candidate clips, and provides a Streamlit app for labeling and inter-rater adjudication.
 
+The labeling stage produces a reviewed Tom / Hen / Background dataset. BirdNET performs the candidate detection; training a turkey-specific classifier on the reviewed clips is a planned next phase.
+
 ## Data layout
 
 Place raw audio under `data/ARU_<id>/` inside your project root. WAV files must follow the naming convention `<device_id>_YYYYMMDD_HHMMSS.wav` (e.g. `2MA09358_20260304_051500.wav`). Files that don't match are quarantined rather than crashing the pipeline.
