@@ -108,9 +108,7 @@ turkey-review
 - Each CSV row contains: `item_id, detection_id, reviewer_id, reviewer_name, regions_json, other_birds_present, unsure, tom_present, hen_present, label_timestamp_utc, session_id`. `regions_json` is a JSON list of `{start_s, end_s, freq_min_hz, freq_max_hz, label}` objects; `tom_present` / `hen_present` are denormalized for cheap filtering.
 - Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
 
-> **Note:** v0.2.0 broke the v0.1.0 label-CSV schema (single `Tom/Hen/Background/Skip` column → per-region annotation + denormalized booleans). Old label CSVs are not migrated.
-
-## Training and classification (v0.3.0)
+## Training and classification
 
 Once reviewers have produced labeled clips, train a region-level sound-event-detection (SED) model and run it on raw ARU recordings.
 
