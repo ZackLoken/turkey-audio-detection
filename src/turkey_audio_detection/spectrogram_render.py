@@ -77,14 +77,12 @@ def render_canvas_spectrogram(
 
     dpi = 100
     fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi, facecolor=_BG)
-    ax = fig.add_axes(
-        [
-            DATA_LEFT_FRAC,
-            DATA_BOTTOM_FRAC,
-            DATA_RIGHT_FRAC - DATA_LEFT_FRAC,
-            DATA_TOP_FRAC - DATA_BOTTOM_FRAC,
-        ]
-    )
+    ax = fig.add_axes((
+        DATA_LEFT_FRAC,
+        DATA_BOTTOM_FRAC,
+        DATA_RIGHT_FRAC - DATA_LEFT_FRAC,
+        DATA_TOP_FRAC - DATA_BOTTOM_FRAC,
+    ))
     ax.set_facecolor(_BG)
     librosa.display.specshow(
         db,

@@ -75,9 +75,11 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
 
     index_df = pd.DataFrame(
         records,
-        columns=["aru_id", "device_id", "date", "time", "datetime", "filepath"],
+        columns=pd.Index(["aru_id", "device_id", "date", "time", "datetime", "filepath"]),
     )
-    quarantine_df = pd.DataFrame(quarantine, columns=["filepath", "filename", "reason"])
+    quarantine_df = pd.DataFrame(
+        quarantine, columns=pd.Index(["filepath", "filename", "reason"])
+    )
 
     if not index_df.empty:
         tz = zoneinfo.ZoneInfo(cfg.timezone_name)
@@ -102,9 +104,9 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
         mins: list[float] = []
         sunrises: list[str] = []
         for _, row in index_df.iterrows():
-            d_text = row["date"]
+            d_text = str(row["date"])
             sunrise_dt = _sunrise_for_date(d_text)
-            rec_dt = datetime.fromisoformat(row["datetime"])
+            rec_dt = datetime.fromisoformat(str(row["datetime"]))
             delta = (rec_dt - sunrise_dt).total_seconds() / 60.0
             mins.append(delta)
             sunrises.append(sunrise_dt.isoformat())
@@ -136,7 +138,7 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
     df_index = pd.read_csv(index_path)
     if df_index.empty:
         out = pd.DataFrame(
-            columns=[
+            columns=pd.Index([
                 "detection_id",
                 "project_root",
                 "aru_id",
@@ -149,7 +151,7 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
                 "birdnet_model_version",
                 "source_filename",
                 "source_row_index",
-            ]
+            ])
         )
         out.to_csv(layout.birdnet_dir / "detections_normalized.csv", index=False)
         return out
@@ -222,21 +224,21 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
                     "confidence": confidence,
                     "birdnet_model_version": "birdnetlib",
                     "source_filename": Path(audio_path).name,
-                    "source_row_index": int(row_idx),
+                    "source_row_index": int(row_idx),  # type: ignore[arg-type]
                 }
             )
 
-    detection_columns = [
+    detection_columns = pd.Index([
         "detection_id", "project_root", "aru_id", "audio_path",
         "start_time_s", "end_time_s", "species_code", "species_common_name",
         "confidence", "birdnet_model_version", "source_filename", "source_row_index",
-    ]
+    ])
     out_df = pd.DataFrame(rows, columns=detection_columns) if rows else pd.DataFrame(columns=detection_columns)
     if not out_df.empty:
         out_df.sort_values(["audio_path", "start_time_s", "end_time_s"], inplace=True, ignore_index=True)
     if errors:
         error_path = layout.birdnet_dir / "birdnet_errors.csv"
-        pd.DataFrame(errors, columns=["filepath", "error"]).to_csv(error_path, index=False)
+        pd.DataFrame(errors, columns=pd.Index(["filepath", "error"])).to_csv(error_path, index=False)
     layout.birdnet_dir.mkdir(parents=True, exist_ok=True)
     out_df.to_csv(layout.birdnet_dir / "detections_normalized.csv", index=False)
     return out_df
@@ -270,7 +272,7 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
     detections_df = pd.read_csv(detections_path)
     if detections_df.empty:
         queue_df = pd.DataFrame(
-            columns=[
+            columns=pd.Index([
                 "item_id",
                 "detection_id",
                 "clip_path",
@@ -282,7 +284,7 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
                 "source_audio_path",
                 "confidence",
                 "recording_datetime",
-            ]
+            ])
         )
         queue_df.to_csv(layout.queue_dir / "review_queue.csv", index=False)
         return queue_df

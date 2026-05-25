@@ -21,6 +21,11 @@ import soundfile as sf
 import torch
 from scipy import ndimage
 
+# `torch.device` isn't in torch's typed __all__ so Pylance flags it as a private
+# import everywhere it appears in a signature. Alias once here so the function
+# annotations below stay readable and only one suppression is needed.
+_TorchDevice = torch.device  # type: ignore[attr-defined]
+
 from turkey_audio_detection import __version__ as _PACKAGE_VERSION
 from turkey_audio_detection.config import InferConfig
 from turkey_audio_detection.dataset import MelParams, parse_regions  # noqa: F401
@@ -69,7 +74,7 @@ def _window_indices(n_samples: int, window_n: int, stride_n: int) -> list[int]:
     return starts
 
 
-def load_model_from_checkpoint(checkpoint_path: Path, device: torch.device) -> CnnSed:
+def load_model_from_checkpoint(checkpoint_path: Path, device: _TorchDevice) -> CnnSed:
     state = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
     model = CnnSed(n_classes=N_CLASSES, pretrained=False).to(device)
     model.load_state_dict(state["model_state"])
@@ -82,7 +87,7 @@ def _probmap_for_file(
     model: CnnSed,
     cfg: InferConfig,
     mel_params: MelParams,
-    device: torch.device,
+    device: _TorchDevice,
 ) -> tuple[np.ndarray, int, float]:
     """Return (prob_map (C, n_mels, total_frames), total_frames, duration_s)."""
     y, sr = librosa.load(str(audio_path), sr=mel_params.sample_rate, mono=True)
@@ -108,10 +113,10 @@ def _probmap_for_file(
     for i in range(0, len(batch_chunks), bs):
         chunk = batch_chunks[i : i + bs]
         mels = np.stack([c[1] for c in chunk])
-        tensor = torch.from_numpy(mels).to(device, non_blocking=True)
+        tensor = torch.from_numpy(mels).to(device, non_blocking=True)  # type: ignore[attr-defined]
         with torch.no_grad():
             logits = model(tensor)
-            probs = torch.sigmoid(logits).cpu().numpy()
+            probs = torch.sigmoid(logits).cpu().numpy()  # type: ignore[attr-defined]
         for (start_sample, _), p in zip(chunk, probs):
             f0 = int(round(start_sample / mel_params.hop_length))
             n_frames_window = p.shape[-1]
@@ -138,7 +143,7 @@ def _components_to_events(
     mask = prob_class > cfg.score_threshold
     if not mask.any():
         return []
-    labeled, n = ndimage.label(mask)
+    labeled, n = ndimage.label(mask)  # type: ignore[misc]
     if n == 0:
         return []
 
@@ -214,7 +219,7 @@ def infer_file(
     model: CnnSed,
     cfg: InferConfig,
     mel_params: MelParams,
-    device: torch.device,
+    device: _TorchDevice,
     aru_id: str,
     model_id: str,
     inference_id: str,
@@ -233,12 +238,12 @@ def infer_file(
     events = _merge_adjacent(events, cfg.merge_gap_s)
     if not events:
         return pd.DataFrame(
-            columns=[
+            columns=pd.Index([
                 "event_id", "source_audio_path", "aru_id",
                 "start_time_s", "end_time_s",
                 "freq_min_hz", "freq_max_hz",
                 "label", "score", "model_id", "model_version", "inference_id",
-            ]
+            ])
         )
     return pd.DataFrame(events)
 
@@ -252,7 +257,7 @@ def _infer_aru_id(audio_path: Path) -> str:
 
 
 def infer(cfg: InferConfig, project_root: Path) -> dict:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # type: ignore[attr-defined]
     model_root = model_dir(project_root, cfg.model_id)
     checkpoint = model_root / "checkpoint.pt"
     if not checkpoint.exists():

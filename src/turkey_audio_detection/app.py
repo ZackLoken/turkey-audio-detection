@@ -193,7 +193,7 @@ def _current_queue_index(queue_df: pd.DataFrame, labels_df: pd.DataFrame) -> int
     done_ids = set(latest["item_id"].astype(str).tolist())
     for idx, row in queue_df.iterrows():
         if str(row["item_id"]) not in done_ids:
-            return idx
+            return int(idx)  # type: ignore[arg-type]
     return len(queue_df) - 1
 
 
@@ -484,11 +484,11 @@ def main() -> None:
         else:
             selected_run = st.text_input("Run ID", value="")
 
-        reviewer_id = st.text_input("Reviewer Name", value=st.session_state.get("reviewer_id", ""))
+        reviewer_id = st.text_input("Reviewer Name", value=st.session_state.get("reviewer_id", "")) or ""
 
         if st.button("Enter", type="primary"):
             st.session_state["reviewer_id"] = reviewer_id.strip()
-            st.session_state["run_id"] = selected_run.strip()
+            st.session_state["run_id"] = (selected_run or "").strip()
             st.session_state["session_id"] = st.session_state.get("session_id") or str(uuid.uuid4())
             st.rerun()
 
