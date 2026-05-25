@@ -94,15 +94,17 @@ turkey-pipeline adjudicate --project-root .
 turkey-review
 ```
 
-- **Sidebar:** set project root, select run ID, enter reviewer name
-- **Main panel:** audio player, full-band reference spectrogram, and a drawable mel spectrogram pinned to 200–6000 Hz (the turkey vocal band)
+![Turkey Call Labeler GUI](GUI_Labeler.png)
+
+- **Sidebar:** set project root, select run ID, enter reviewer name. The collapsible *How to label* expander lives below.
+- **Main panel:** custom audio control (play/pause, `seconds.milliseconds` timestamp, scrubber) and a mel spectrogram pinned to 50–14000 Hz with labeled time and frequency axes. The vertical black bar over the spectrogram tracks the audio playhead.
 - **Region annotation:**
-  - Pick the active label (`Tom` or `Hen`) — switch mid-clip to mix both kinds of calls in one save
-  - Drag rectangles on the spectrogram around each call; the rectangle's x-extent encodes time, y-extent encodes frequency
-  - Tick **Snap to full frequency band** when you don't want to bother with the y-axis (regions are persisted with `freq_min_hz=200, freq_max_hz=6000`)
-  - Tick **Other birds present** if the clip contains non-turkey vocalizations alongside (or instead of) the turkey calls
-  - Tick **Unsure** if you can't reliably tell — by default `adjudicate` excludes unsure rows from agreement stats
-- **Save & Next** writes one row to `data/_outputs/review/labels/<reviewer_id>.csv` and advances. **Previous** revisits a labeled clip (regions re-render so you can edit them). **Reset canvas** clears the current clip's drawings. **Jump to first unlabeled** seeks to the next clip without a saved snapshot.
+  - Toggle the active label (`Tom` = lime green, `Hen` = royal blue) between drawings to mix both call types on one clip
+  - Drag rectangles on the spectrogram around each call; the rectangle's x-extent encodes time, y-extent encodes frequency. Each box is auto-previewed (audio bandpass-filtered to the box's frequency bounds) the moment you finish drawing
+  - **Click** an existing rectangle to replay its band-limited audio; **double-click** to delete it
+  - Tick **Other birds present** when any non-turkey bird is audible in the clip (most BirdNET candidates have at least one)
+  - Tick **Unsure** when you can't reliably tell whether a turkey is in the clip — these rows are excluded from agreement stats by default
+- **Save & Next** writes one row to `data/_outputs/review/labels/<reviewer_id>.csv` and advances. Saving on an empty canvas creates an explicit *no turkey* label. **Previous** revisits a labeled clip (regions re-render so you can edit them). **Reset canvas** clears drawings *and* removes any saved snapshot for the clip so it becomes unlabeled again. **Jump to first unlabeled** seeks to the next clip without a saved snapshot.
 - Each CSV row contains: `item_id, detection_id, reviewer_id, reviewer_name, regions_json, other_birds_present, unsure, tom_present, hen_present, label_timestamp_utc, session_id`. `regions_json` is a JSON list of `{start_s, end_s, freq_min_hz, freq_max_hz, label}` objects; `tom_present` / `hen_present` are denormalized for cheap filtering.
 - Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
 
