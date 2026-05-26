@@ -4,3 +4,6 @@
 /supplemental
 /src/turkey_audio_detection.egg-info
 **/__pycache__
+/src/turkey_audio_detection/inference.py
+/src/turkey_audio_detection/training.py
+/src/turkey_audio_detection/training_labels.py
