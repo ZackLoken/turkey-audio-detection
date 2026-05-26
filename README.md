@@ -111,9 +111,8 @@ turkey-review
 ## Training and classification 
 
 To-dos:
-
-     - CUDA-enabled training
-     - Hyperparameter optimization
+- CUDA-enabled training
+- Hyperparameter optimization
 
 Once reviewers have produced labeled clips, train a region-level sound-event-detection (SED) model and run it on raw ARU recordings.
 
