@@ -97,18 +97,23 @@ turkey-review
 ![Turkey Call Labeler GUI](GUI_Labeler.png)
 
 - **Sidebar:** set project root, select run ID, enter reviewer name. The collapsible *How to label* expander lives below.
-- **Main panel:** custom audio control (play/pause, `seconds.milliseconds` timestamp, scrubber) and a mel spectrogram pinned to 50–14000 Hz with labeled time and frequency axes. The vertical black bar over the spectrogram tracks the audio playhead.
+- **Main panel:** custom audio control and a mel spectrogram pinned to 50–14000 Hz with labeled time and frequency axes. The vertical black bar over the spectrogram tracks the audio playhead.
 - **Region annotation:**
-  - Toggle the active label (`Tom` = lime green, `Hen` = royal blue) between drawings to mix both call types on one clip
+  - Toggle the active label (`Tom` = lime green, `Hen` = royal blue) between drawings to label both call types on one clip
   - Drag rectangles on the spectrogram around each call; the rectangle's x-extent encodes time, y-extent encodes frequency. Each box is auto-previewed (audio bandpass-filtered to the box's frequency bounds) the moment you finish drawing
   - **Click** an existing rectangle to replay its band-limited audio; **double-click** to delete it
-  - Tick **Other birds present** when any non-turkey bird is audible in the clip (most BirdNET candidates have at least one)
+  - Tick **Other birds present** when any non-turkey bird is audible in the clip
   - Tick **Unsure** when you can't reliably tell whether a turkey is in the clip — these rows are excluded from agreement stats by default
 - **Save & Next** writes one row to `data/_outputs/review/labels/<reviewer_id>.csv` and advances. Saving on an empty canvas creates an explicit *no turkey* label. **Previous** revisits a labeled clip (regions re-render so you can edit them). **Reset canvas** clears drawings *and* removes any saved snapshot for the clip so it becomes unlabeled again. **Jump to first unlabeled** seeks to the next clip without a saved snapshot.
 - Each CSV row contains: `item_id, detection_id, reviewer_id, reviewer_name, regions_json, other_birds_present, unsure, tom_present, hen_present, label_timestamp_utc, session_id`. `regions_json` is a JSON list of `{start_s, end_s, freq_min_hz, freq_max_hz, label}` objects; `tom_present` / `hen_present` are denormalized for cheap filtering.
 - Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
 
-## Training and classification
+## Training and classification 
+
+To-dos:
+
+     - CUDA-enabled training
+     - Hyperparameter optimization
 
 Once reviewers have produced labeled clips, train a region-level sound-event-detection (SED) model and run it on raw ARU recordings.
 
