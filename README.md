@@ -47,17 +47,19 @@ project-root/
 4. Put your audio data in `data/ARU_01/` (or `data/ARU_02/`, etc.) and run the full pipeline:
 
    ```
-   turkey-pipeline run-all --project-root "C:\path\to\your\project"
+   python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project"
    ```
 
    The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes — **note it**, you'll need it for the review app.
+
+   > **Note:** All commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some locked-down lab machines block unsigned `.exe` wrappers under managed antivirus / AppLocker — the `python -m` form sidesteps that and works everywhere.
 
    > **Note:** TensorFlow and BirdNET print verbose INFO/WARNING messages to the console during startup. These are normal and can be ignored. A progress bar shows per-file status while BirdNET is running.
 
 5. Launch the review app:
 
    ```
-   turkey-review
+   python -m turkey_audio_detection.app
    ```
 
    In the sidebar enter your **project root**, the **run ID** from step 4, and a **reviewer name**. For each clip, draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick **Other birds present** / **Unsure** when relevant, then click **Save & Next**. See the [Review app](#review-app) section below for details.
@@ -73,25 +75,25 @@ All outputs are written under `data/_outputs/runs/<run_id>/`.
 
 ```
 # Index recordings and compute sunrise windows
-turkey-pipeline index-data --project-root .
+python -m turkey_audio_detection.cli index-data --project-root .
 
 # Run BirdNET on indexed files (use run_id from previous step)
-turkey-pipeline run-birdnet --project-root . --run-id <run_id>
+python -m turkey_audio_detection.cli run-birdnet --project-root . --run-id <run_id>
 
 # Extract 3-second review clips for Wild Turkey detections
-turkey-pipeline extract-clips --project-root . --run-id <run_id>
+python -m turkey_audio_detection.cli extract-clips --project-root . --run-id <run_id>
 
 # Or run all three stages at once
-turkey-pipeline run-all --project-root .
+python -m turkey_audio_detection.cli run-all --project-root .
 
 # Compute inter-rater Cohen's kappa from reviewer label files
-turkey-pipeline adjudicate --project-root .
+python -m turkey_audio_detection.cli adjudicate --project-root .
 ```
 
 ## Review app
 
 ```
-turkey-review
+python -m turkey_audio_detection.app
 ```
 
 ![Turkey Call Labeler GUI](GUI_Labeler.png)
@@ -121,15 +123,15 @@ Once reviewers have produced labeled clips, train a region-level sound-event-det
 # stratifies a train/val/test split by (ARU id, recording date) to prevent
 # same-recording leakage, then finetunes a PANNs CNN14 backbone with a U-Net
 # decoder + 2-channel (Tom, Hen) output head.
-turkey-train --project-root . --run-id <run_id> [--run-id <run_id> ...] \
-             --epochs 60 --batch-size 32 --learning-rate 1e-4
+python -m turkey_audio_detection.cli train --project-root . --run-id <run_id> [--run-id <run_id> ...] \
+       --epochs 60 --batch-size 32 --learning-rate 1e-4
 
 # Run a trained model on raw audio files. Slides 3-second windows across each
 # WAV, stitches per-window 2D probability maps, then extracts connected-component
 # events as `(start_s, end_s, freq_min_hz, freq_max_hz, label, score)` rows —
 # matching the same shape as human region labels.
-turkey-classify --project-root . --model-id <model_id> \
-                --audio-glob "data/ARU_*/**/*.wav"
+python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> \
+       --audio-glob "data/ARU_*/**/*.wav"
 ```
 
 **Outputs:**
@@ -146,4 +148,4 @@ turkey-classify --project-root . --model-id <model_id> \
 - Loss: pixel-level binary cross-entropy with positive-class weighting
 - Training augmentation: SpecAugment + Mixup + background-mix from negative clips
 
-**Aggregation:** by default `turkey-train` trains only on clips where reviewers reached consensus on `tom_present` and `hen_present`. Pass `--include-non-consensus` to train on disagreement-flagged clips as well.
+**Aggregation:** by default the `train` command only includes clips where reviewers reached consensus on `tom_present` and `hen_present`. Pass `--include-non-consensus` to train on disagreement-flagged clips as well.
