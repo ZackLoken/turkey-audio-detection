@@ -449,11 +449,15 @@ def _launch_via_streamlit() -> None:
     """Re-launch this module via `streamlit run` when called as a console script."""
     import os
     import subprocess
+    import sys
 
     env = os.environ.copy()
     env["_TURKEY_STREAMLIT_CHILD"] = "1"
     script = Path(__file__).resolve()
-    args = ["streamlit", "run", str(script), "--server.headless", "false"]
+    # Invoke streamlit through the current Python interpreter rather than the
+    # streamlit.exe wrapper so the launch works on managed Windows machines
+    # where AV / AppLocker blocks unsigned .exe wrappers in conda envs.
+    args = [sys.executable, "-m", "streamlit", "run", str(script), "--server.headless", "false"]
     raise SystemExit(subprocess.call(args, env=env))
 
 
