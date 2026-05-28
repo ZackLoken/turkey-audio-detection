@@ -112,7 +112,7 @@ python -m turkey_audio_detection.app
 
 ## Training, evaluation, and classification
 
-Once reviewers have produced labeled clips, train the frame-level sound-event-detection (SED) model, evaluate it, and run it directly over full recordings. BirdNET is only a labeling aid (proposing review candidates); it is not used at inference. Training and inference run in PyTorch on CUDA; the first run downloads the BirdSet ConvNeXt weights (~390 MB) to the Hugging Face cache.
+Once reviewers have produced labeled clips, train the frame-level sound-event-detection (SED) model, evaluate it, and run it over full recordings. Training and inference run in PyTorch on CUDA; the first run downloads the BirdSet ConvNeXt weights (~390 MB) to the Hugging Face cache.
 
 First, copy `site_map.example.csv` to `data/site_map.csv` and fill in one `aru_id,site_id` row per ARU so train/val/test split by **site** (unmapped ARUs fall back to one-site-per-ARU). `data/` is gitignored, so your populated map stays local and is never overwritten by updates.
 
@@ -130,7 +130,7 @@ python -m turkey_audio_detection.cli evaluate --project-root . --model-id <model
 # Optuna hyperparameter search (resumable when given a --storage sqlite path).
 python -m turkey_audio_detection.cli hpo --project-root . --run-id <run_id> --n-trials 30 --storage hpo.db
 
-# Run the trained model over full recordings (sliding window; no BirdNET). Emits
+# Run the trained model over full recordings (sliding window). Emits
 # per-call events (start_s, end_s, sex, score) and presence/counts per site/day.
 python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> --audio-glob "data/ARU_*/**/*.wav"
 ```
@@ -148,8 +148,7 @@ python -m turkey_audio_detection.cli classify --project-root . --model-id <model
 - Backbone: [`DBD-research-group/ConvNeXT-Base-BirdSet-XCL`](https://huggingface.co/DBD-research-group/ConvNeXT-Base-BirdSet-XCL) (bird-pretrained); the first two stages are tapped (~80 ms/frame) and the deeper stages dropped; gradually unfrozen during fine-tuning
 - Head: collapse frequency → BiGRU (or TCN) temporal head → per-frame Tom/Hen sigmoid logits
 - Loss: per-frame focal (or BCE) on time-projected box targets; rejected candidates (no turkey) become all-zero negatives
-- Inference: the trained model slides over the **full recording** → average overlapping per-frame probs → per-class threshold → group frames into events → counts (BirdNET is not used at inference)
-- Whole-recording negatives: because inference runs over full audio, training needs negatives sampled from across recordings (not only review-rejected candidates) to avoid over-firing — to be added once labeled data exists
+- Inference: the trained model slides over the **full recording** → average overlapping per-frame probs → per-class threshold → group frames into events → counts
 - Augmentation: SpecAugment + linear-power Mixup / background-mix
 
 **Splits & aggregation:** `train` groups train/val/test by site and can hold out whole years with `--holdout-year`. By default only consensus clips are used; pass `--include-non-consensus` to include disagreement-flagged clips.
