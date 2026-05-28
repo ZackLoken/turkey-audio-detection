@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from turkey_audio_detection.adjudication import adjudicate_to_csv
-from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig, InferConfig, TrainConfig
+from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig, SedInferConfig, SedTrainConfig
 from turkey_audio_detection.layout import RunLayout, validate_project_layout
 from turkey_audio_detection.manifest import build_stage_manifest, make_run_id, write_manifest
 from turkey_audio_detection.stages import (
@@ -188,60 +188,118 @@ def _cmd_adjudicate(args: argparse.Namespace) -> int:
 
 
 def _cmd_train(args: argparse.Namespace) -> int:
-    from turkey_audio_detection.training import train
+    from turkey_audio_detection.sed_training import train_sed
 
     project_root = Path(args.project_root).resolve()
     model_id = args.model_id or make_run_id(prefix="model")
-    cfg = TrainConfig(
+    cfg = SedTrainConfig(
         run_ids=list(args.run_id),
         model_id=model_id,
         clip_duration_s=args.clip_duration,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
         include_non_consensus=args.include_non_consensus,
+        site_map_path=args.site_map_path,
         val_fraction=args.val_fraction,
         test_fraction=args.test_fraction,
-        num_workers=args.num_workers,
+        holdout_years=list(args.holdout_year or []),
+        pretrained=not args.no_pretrained,
+        n_stages=args.n_stages,
+        temporal=args.temporal,
+        hidden_size=args.hidden_size,
+        n_layers=args.n_layers,
+        dropout=args.dropout,
+        loss=args.loss,
+        focal_gamma=args.focal_gamma,
+        pos_weight=args.pos_weight,
+        base_lr=args.base_lr,
+        base_batch_size=args.base_batch_size,
+        backbone_lr_mult=args.backbone_lr_mult,
+        weight_decay=args.weight_decay,
         mixup_alpha=args.mixup_alpha,
         specaugment_enabled=not args.no_specaugment,
-        background_mix_enabled=not args.no_background_mix,
-        pos_weight=args.pos_weight,
+        early_stop_patience=args.early_stop_patience,
+        num_workers=args.num_workers,
         seed=args.seed,
-        pretrained=not args.no_pretrained,
     )
-    result = train(cfg, project_root)
+    result = train_sed(cfg, project_root)
     _print(
         f"train completed | model_id={result['model_id']} | "
         f"n_train={result['n_train']} n_val={result['n_val']} n_test={result['n_test']} | "
-        f"best_avg_f1={result['best_avg_f1']:.3f}"
+        f"best_score={result['best_score']:.3f}"
     )
     return 0
 
 
 def _cmd_classify(args: argparse.Namespace) -> int:
-    from turkey_audio_detection.inference import infer
+    from turkey_audio_detection.sed_inference import infer_sed
 
     project_root = Path(args.project_root).resolve()
     inference_id = args.inference_id or make_run_id(prefix="inf")
-    cfg = InferConfig(
+    cfg = SedInferConfig(
         model_id=args.model_id,
-        audio_glob=args.audio_glob,
+        run_id=args.run_id,
         inference_id=inference_id,
-        window_duration_s=args.window_duration,
-        window_stride_s=args.window_stride,
-        score_threshold=args.score_threshold,
+        candidate_window_duration_s=args.candidate_window_duration,
         min_event_duration_s=args.min_event_duration,
         merge_gap_s=args.merge_gap,
+        species_match_substring=args.species_match,
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        site_map_path=args.site_map_path,
     )
-    result = infer(cfg, project_root)
+    result = infer_sed(cfg, project_root)
     _print(
         f"classify completed | inference_id={result['inference_id']} | "
-        f"files={result['n_files']} events={result['n_events_total']}"
+        f"events={result['n_events_total']}"
     )
+    return 0
+
+
+def _cmd_evaluate(args: argparse.Namespace) -> int:
+    import torch
+
+    from turkey_audio_detection.config import SedTrainConfig
+    from turkey_audio_detection.evaluation import evaluate_table, evaluation_to_rows
+    from turkey_audio_detection.layout import model_dir
+    from turkey_audio_detection.sed_inference import load_sed_model
+    from turkey_audio_detection.sed_training import site_year_split
+    from turkey_audio_detection.sites import attach_site, load_site_map
+    from turkey_audio_detection.training_labels import build_training_table
+
+    project_root = Path(args.project_root).resolve()
+    table = build_training_table(project_root, list(args.run_id), include_non_consensus=args.include_non_consensus)
+    split_cfg = SedTrainConfig(
+        site_map_path=args.site_map_path, val_fraction=args.val_fraction,
+        test_fraction=args.test_fraction, seed=args.seed,
+    )
+    table = site_year_split(attach_site(table, load_site_map(project_root / args.site_map_path)), split_cfg)
+    test_df = table[table["split"] == "test"].reset_index(drop=True)
+    if test_df.empty:
+        _print("evaluate: test split is empty")
+        return 1
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model, payload = load_sed_model(model_dir(project_root, args.model_id) / "checkpoint.pt", device)
+    result = evaluate_table(
+        model, test_df, payload, device,
+        iou_thresholds=tuple(args.iou_thresholds), seg_s=args.seg_s, clip_duration_s=args.clip_duration,
+    )
+    out = model_dir(project_root, args.model_id) / "eval.csv"
+    evaluation_to_rows(result).to_csv(out, index=False)
+    _print(f"evaluate completed | model_id={args.model_id} | n_test={len(test_df)} | wrote {out}")
+    return 0
+
+
+def _cmd_hpo(args: argparse.Namespace) -> int:
+    from turkey_audio_detection.config import SedTrainConfig
+    from turkey_audio_detection.hpo import run_hpo
+    from turkey_audio_detection.training_labels import build_training_table
+
+    project_root = Path(args.project_root).resolve()
+    table = build_training_table(project_root, list(args.run_id), include_non_consensus=args.include_non_consensus)
+    base = SedTrainConfig(
+        run_ids=list(args.run_id), site_map_path=args.site_map_path,
+        num_workers=args.num_workers, seed=args.seed,
+    )
+    study = run_hpo(table, project_root, base, n_trials=args.n_trials, storage=args.storage, study_name=args.study_name)
+    _print(f"hpo completed | trials={len(study.trials)} | best_value={study.best_value:.3f} | best_params={study.best_params}")
     return 0
 
 
@@ -353,41 +411,75 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Skip pre-rendering review spectrograms")
     p_run_all.set_defaults(func=_cmd_run_all)
 
-    p_train = sub.add_parser("train", help="Train a region-level SED classifier on reviewed labels")
+    p_train = sub.add_parser("train", help="Train the frame-level SED model on reviewed labels")
     p_train.add_argument("--project-root", required=True)
     p_train.add_argument("--run-id", action="append", required=True,
                          help="One or more run IDs whose review queue + labels feed training")
     p_train.add_argument("--model-id")
     p_train.add_argument("--clip-duration", type=float, default=3.0)
-    p_train.add_argument("--epochs", type=int, default=60)
-    p_train.add_argument("--batch-size", type=int, default=32)
-    p_train.add_argument("--learning-rate", type=float, default=1e-4)
-    p_train.add_argument("--weight-decay", type=float, default=1e-4)
-    p_train.add_argument("--include-non-consensus", action="store_true")
+    p_train.add_argument("--site-map-path", default="data/site_map.csv")
     p_train.add_argument("--val-fraction", type=float, default=0.15)
     p_train.add_argument("--test-fraction", type=float, default=0.15)
-    p_train.add_argument("--num-workers", type=int, default=2)
-    p_train.add_argument("--mixup-alpha", type=float, default=0.4)
-    p_train.add_argument("--no-specaugment", action="store_true")
-    p_train.add_argument("--no-background-mix", action="store_true")
-    p_train.add_argument("--pos-weight", type=float, default=10.0)
-    p_train.add_argument("--seed", type=int, default=42)
+    p_train.add_argument("--holdout-year", action="append", type=int, help="Year(s) held out for test")
+    p_train.add_argument("--include-non-consensus", action="store_true")
     p_train.add_argument("--no-pretrained", action="store_true")
+    p_train.add_argument("--n-stages", type=int, default=2)
+    p_train.add_argument("--temporal", choices=["bigru", "tcn"], default="bigru")
+    p_train.add_argument("--hidden-size", type=int, default=256)
+    p_train.add_argument("--n-layers", type=int, default=2)
+    p_train.add_argument("--dropout", type=float, default=0.2)
+    p_train.add_argument("--loss", choices=["focal", "bce"], default="focal")
+    p_train.add_argument("--focal-gamma", type=float, default=2.0)
+    p_train.add_argument("--pos-weight", type=float, default=1.0)
+    p_train.add_argument("--base-lr", type=float, default=1e-3)
+    p_train.add_argument("--base-batch-size", type=int, default=32)
+    p_train.add_argument("--backbone-lr-mult", type=float, default=0.1)
+    p_train.add_argument("--weight-decay", type=float, default=1e-4)
+    p_train.add_argument("--mixup-alpha", type=float, default=0.0)
+    p_train.add_argument("--no-specaugment", action="store_true")
+    p_train.add_argument("--early-stop-patience", type=int, default=5)
+    p_train.add_argument("--num-workers", type=int, default=2)
+    p_train.add_argument("--seed", type=int, default=42)
     p_train.set_defaults(func=_cmd_train)
 
-    p_classify = sub.add_parser("classify", help="Run a trained SED model on raw audio files")
+    p_classify = sub.add_parser("classify", help="Run a trained SED model on a run's BirdNET candidates")
     p_classify.add_argument("--project-root", required=True)
     p_classify.add_argument("--model-id", required=True)
-    p_classify.add_argument("--audio-glob", default="data/ARU_*/**/*.wav")
+    p_classify.add_argument("--run-id", required=True, help="Run whose BirdNET candidates gate inference")
     p_classify.add_argument("--inference-id")
-    p_classify.add_argument("--window-duration", type=float, default=3.0)
-    p_classify.add_argument("--window-stride", type=float, default=1.5)
-    p_classify.add_argument("--score-threshold", type=float, default=0.5)
-    p_classify.add_argument("--min-event-duration", type=float, default=0.2)
-    p_classify.add_argument("--merge-gap", type=float, default=0.3)
+    p_classify.add_argument("--candidate-window-duration", type=float, default=3.0)
+    p_classify.add_argument("--min-event-duration", type=float, default=0.1)
+    p_classify.add_argument("--merge-gap", type=float, default=0.2)
+    p_classify.add_argument("--species-match", default="Wild Turkey")
     p_classify.add_argument("--batch-size", type=int, default=16)
-    p_classify.add_argument("--num-workers", type=int, default=2)
+    p_classify.add_argument("--site-map-path", default="data/site_map.csv")
     p_classify.set_defaults(func=_cmd_classify)
+
+    p_eval = sub.add_parser("evaluate", help="Event-level + segment evaluation on the test split")
+    p_eval.add_argument("--project-root", required=True)
+    p_eval.add_argument("--model-id", required=True)
+    p_eval.add_argument("--run-id", action="append", required=True)
+    p_eval.add_argument("--include-non-consensus", action="store_true")
+    p_eval.add_argument("--site-map-path", default="data/site_map.csv")
+    p_eval.add_argument("--val-fraction", type=float, default=0.15)
+    p_eval.add_argument("--test-fraction", type=float, default=0.15)
+    p_eval.add_argument("--iou-thresholds", type=float, nargs="+", default=[0.1, 0.3, 0.5])
+    p_eval.add_argument("--seg-s", type=float, default=1.0)
+    p_eval.add_argument("--clip-duration", type=float, default=3.0)
+    p_eval.add_argument("--seed", type=int, default=42)
+    p_eval.set_defaults(func=_cmd_evaluate)
+
+    p_hpo = sub.add_parser("hpo", help="Optuna hyperparameter search for the SED model")
+    p_hpo.add_argument("--project-root", required=True)
+    p_hpo.add_argument("--run-id", action="append", required=True)
+    p_hpo.add_argument("--include-non-consensus", action="store_true")
+    p_hpo.add_argument("--site-map-path", default="data/site_map.csv")
+    p_hpo.add_argument("--n-trials", type=int, default=20)
+    p_hpo.add_argument("--storage", help="SQLite path for a resumable study")
+    p_hpo.add_argument("--study-name", default="sed_hpo")
+    p_hpo.add_argument("--num-workers", type=int, default=2)
+    p_hpo.add_argument("--seed", type=int, default=42)
+    p_hpo.set_defaults(func=_cmd_hpo)
 
     return parser
 

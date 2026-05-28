@@ -2,7 +2,7 @@
 
 Modular pipeline for detecting and reviewing Wild Turkey vocalizations in ARU (autonomous recording unit) audio. Runs BirdNET on WAV recordings, extracts candidate clips, and provides a Streamlit app for labeling and inter-rater adjudication.
 
-The labeling stage produces a reviewed dataset of time–frequency regions on each 3-second candidate clip, each region tagged Tom or Hen. Clips with no turkey are saved with an empty region list (with an optional "other birds present" flag). BirdNET performs the candidate detection; training a turkey-specific classifier on the reviewed regions is a planned next phase.
+The labeling stage produces a reviewed dataset of time–frequency regions on each 3-second candidate clip, each region tagged Tom or Hen. Clips with no turkey are saved with an empty region list (with an optional "other birds present" flag). BirdNET performs the candidate detection; a turkey-specific frame-level model trained on the reviewed regions then localizes the exact timing, duration, and sex of each call.
 
 ## Data layout
 
@@ -110,42 +110,51 @@ python -m turkey_audio_detection.app
 - Each CSV row contains: `item_id, detection_id, reviewer_id, reviewer_name, regions_json, other_birds_present, unsure, tom_present, hen_present, label_timestamp_utc, session_id`. `regions_json` is a JSON list of `{start_s, end_s, freq_min_hz, freq_max_hz, label}` objects; `tom_present` / `hen_present` are denormalized for cheap filtering.
 - Run `adjudicate` after two reviewers finish to get pairwise Cohen's kappa **per attribute** (`tom_present` and `hen_present`) and a disagreements export tagged by attribute.
 
-## Training and classification 
+## Training, evaluation, and classification
 
-To-dos:
-- CUDA-enabled training
-- Hyperparameter optimization
+Once reviewers have produced labeled clips, train the frame-level sound-event-detection (SED) model, evaluate it, and run it on a run's BirdNET candidates. Training and inference run in PyTorch on CUDA; the first run downloads the BirdSet ConvNeXt weights (~390 MB) to the Hugging Face cache.
 
-Once reviewers have produced labeled clips, train a region-level sound-event-detection (SED) model and run it on raw ARU recordings.
+First, copy `site_map.example.csv` to `data/site_map.csv` and fill in one `aru_id,site_id` row per ARU so train/val/test split by **site** (unmapped ARUs fall back to one-site-per-ARU). `data/` is gitignored, so your populated map stays local and is never overwritten by updates.
 
 ```
 # Train on one or more runs' labels. Aggregates per-reviewer CSVs via majority vote,
-# stratifies a train/val/test split by (ARU id, recording date) to prevent
-# same-recording leakage, then finetunes a PANNs CNN14 backbone with a U-Net
-# decoder + 2-channel (Tom, Hen) output head.
-python -m turkey_audio_detection.cli train --project-root . --run-id <run_id> [--run-id <run_id> ...] \
-       --epochs 60 --batch-size 32 --learning-rate 1e-4
+# splits train/val/test grouped by SITE (+ optional --holdout-year) to avoid leakage,
+# then fine-tunes a BirdSet-pretrained ConvNeXt frontend with a BiGRU temporal head,
+# gradually unfreezing backbone stages across phases (scaling LR/batch, early stopping).
+python -m turkey_audio_detection.cli train --project-root . --run-id <run_id> [--run-id <run_id> ...]
 
-# Run a trained model on raw audio files. Slides 3-second windows across each
-# WAV, stitches per-window 2D probability maps, then extracts connected-component
-# events as `(start_s, end_s, freq_min_hz, freq_max_hz, label, score)` rows —
-# matching the same shape as human region labels.
-python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> \
-       --audio-glob "data/ARU_*/**/*.wav"
+# Evaluate on the held-out test split: per-class event precision/recall/F1 with
+# time-axis IoU matching (swept over several IoU thresholds) + segment F1.
+python -m turkey_audio_detection.cli evaluate --project-root . --model-id <model_id> --run-id <run_id>
+
+# Optuna hyperparameter search (resumable when given a --storage sqlite path).
+python -m turkey_audio_detection.cli hpo --project-root . --run-id <run_id> --n-trials 30 --storage hpo.db
+
+# Run a trained model on a run's BirdNET candidate windows (gated inference). Emits
+# per-call events (start_s, end_s, sex, score) and presence/counts per site/day.
+python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> --run-id <run_id>
+```
+
+For a no-code workflow, launch the inference app (pick a trained model, drop in a WAV, get events + counts):
+
+```
+streamlit run src/turkey_audio_detection/app_infer.py
 ```
 
 **Outputs:**
-- `data/_outputs/models/<model_id>/checkpoint.pt` — best-validation model state
-- `data/_outputs/models/<model_id>/train_metrics.csv` — epoch-level loss + per-class precision/recall/F1
-- `data/_outputs/models/<model_id>/splits.csv` — which items went to train / val / test
-- `data/_outputs/inference/<inference_id>/events/<source_filename>.csv` — one events CSV per input WAV
-- `data/_outputs/inference/<inference_id>/summary.csv` — per-file event counts + error log
+- `data/_outputs/models/<model_id>/checkpoint.pt` — best-validation model state + config + mel params + per-class thresholds
+- `data/_outputs/models/<model_id>/train_metrics.csv` — per-phase/epoch loss + frame-level precision/recall/F1
+- `data/_outputs/models/<model_id>/splits.csv` — train/val/test assignment with `site_id`
+- `data/_outputs/models/<model_id>/eval.csv` — event-level metrics (IoU sweep) + segment F1
+- `data/_outputs/inference/<inference_id>/events/<source_filename>.csv` — per-call events `(start_time_s, end_time_s, sex, score)`
+- `data/_outputs/inference/<inference_id>/aggregate_counts.csv` — presence + call counts per site/day/sex
 
 **Architecture:**
-- Encoder: PANNs CNN14 pretrained on AudioSet (auto-downloaded on first use to `~/panns_data/`; ~300 MB)
-- Decoder: small U-Net with skip connections, upsampling back to (n_mels × n_frames)
-- Output: per-(mel-bin, frame) sigmoid logits for Tom and Hen
-- Loss: pixel-level binary cross-entropy with positive-class weighting
-- Training augmentation: SpecAugment + Mixup + background-mix from negative clips
+- Input: 3-second clip → torchaudio log-mel (128 mels), matched to the BirdSet checkpoint's preprocessing so the pretrained weights stay valid
+- Backbone: [`DBD-research-group/ConvNeXT-Base-BirdSet-XCL`](https://huggingface.co/DBD-research-group/ConvNeXT-Base-BirdSet-XCL) (bird-pretrained); the first two stages are tapped (~80 ms/frame) and the deeper stages dropped; gradually unfrozen during fine-tuning
+- Head: collapse frequency → BiGRU (or TCN) temporal head → per-frame Tom/Hen sigmoid logits
+- Loss: per-frame focal (or BCE) on time-projected box targets; rejected candidates (no turkey) become all-zero negatives
+- Inference: BirdNET candidates gate scoring → average overlapping per-frame probs → per-class threshold → group frames into events → counts
+- Augmentation: SpecAugment + linear-power Mixup / background-mix
 
-**Aggregation:** by default the `train` command only includes clips where reviewers reached consensus on `tom_present` and `hen_present`. Pass `--include-non-consensus` to train on disagreement-flagged clips as well.
+**Splits & aggregation:** `train` groups train/val/test by site and can hold out whole years with `--holdout-year`. By default only consensus clips are used; pass `--include-non-consensus` to include disagreement-flagged clips.
