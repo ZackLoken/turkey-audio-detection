@@ -78,17 +78,18 @@ class SedTrainConfig(BaseModel):
 
 
 class SedInferConfig(BaseModel):
-    """Config for candidate-gated frame-level SED inference."""
+    """Config for whole-recording frame-level SED inference (the trained model runs
+    directly over full recordings; BirdNET is not used at inference)."""
 
     model_config = ConfigDict(extra="forbid")
 
     model_id: str
-    run_id: str = ""  # run whose BirdNET candidates gate inference
+    audio_glob: str = "data/ARU_*/**/*.wav"  # recordings to run the detector over
     inference_id: str = ""  # filled by CLI if empty
-    candidate_window_duration_s: float = Field(default=3.0, gt=0.0, le=30.0)
+    window_duration_s: float = Field(default=3.0, gt=0.0, le=30.0)
+    window_stride_s: float = Field(default=1.0, gt=0.0, le=30.0)
     min_event_duration_s: float = Field(default=0.1, ge=0.0, le=10.0)
     merge_gap_s: float = Field(default=0.2, ge=0.0, le=10.0)
     thresholds: dict[str, float] | None = None  # overrides checkpoint per-class thresholds
-    species_match_substring: str = "Wild Turkey"
     batch_size: int = Field(default=16, ge=1)
     site_map_path: str = "data/site_map.csv"

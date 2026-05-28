@@ -118,19 +118,19 @@ def test_infer_recording_end_to_end(tmp_path) -> None:
     audio_path = tmp_path / "2MA_20260401_060000.wav"
     sf.write(str(audio_path), wav, mel.sample_rate)
 
-    windows = pd.DataFrame([
-        {"start_time_s": 1.0, "end_time_s": 1.5},
-        {"start_time_s": 3.5, "end_time_s": 4.0},
-    ])
     model = FrameSed(n_classes=2, n_stages=2, hidden_size=16, n_layers=1, pretrained=False).eval()
     payload = {"time_downsample": 8, "thresholds": {"Tom": 0.0, "Hen": 0.0}}  # thr 0 -> guaranteed events
-    cfg = SedInferConfig(model_id="m", candidate_window_duration_s=3.0, min_event_duration_s=0.1, merge_gap_s=0.2)
+    cfg = SedInferConfig(
+        model_id="m", window_duration_s=3.0, window_stride_s=1.0,
+        min_event_duration_s=0.1, merge_gap_s=0.2,
+    )
     extractor = LogMelExtractor(mel)
 
-    events = infer_recording(audio_path, windows, model, mel, extractor, payload, cfg, torch.device("cpu"), "inf_1")
+    # whole-recording sliding window — no BirdNET / candidate windows
+    events = infer_recording(audio_path, model, mel, extractor, payload, cfg, torch.device("cpu"), "inf_1")
     assert not events.empty
     for col in ("event_id", "source_audio_path", "start_time_s", "end_time_s", "sex", "score"):
         assert col in events.columns
     assert (events["start_time_s"] >= 0).all()
-    assert (events["end_time_s"] <= 6.01).all()
+    assert (events["end_time_s"] <= 6.1).all()
     assert set(events["sex"]).issubset({"Tom", "Hen"})

@@ -1,28 +1,28 @@
-"""Candidate-gated frame-level SED inference.
+"""Whole-recording frame-level SED inference.
 
-BirdNET candidate windows gate what the model scores (bounds compute + matches
-the training distribution). For each recording: score each candidate window, average
-overlapping per-frame probabilities onto a recording-length timeline, threshold per
-class, group frames into events (start_s, end_s, sex, score), and aggregate to
-presence + counts per site/day.
+The trained model runs directly over each recording with overlapping sliding
+windows. BirdNET is NOT used here — it is only a labeling aid for proposing review
+candidates; gating inference on it would cap the detector at BirdNET's recall.
+
+Per-window per-frame probabilities are averaged across overlaps onto a recording
+timeline, thresholded per class, grouped into events (start_s, end_s, sex, score),
+and aggregated to presence + counts per site/day.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import librosa
 import numpy as np
 import pandas as pd
-import soundfile as sf
+import soundfile as sf  # noqa: F401  (kept for parity with other stages / future use)
 import torch
 
-from turkey_audio_detection import __version__ as _PKG_VERSION
 from turkey_audio_detection.config import SedInferConfig
 from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES
 from turkey_audio_detection.ids import _digest
-from turkey_audio_detection.layout import RunLayout, inference_dir, model_dir
+from turkey_audio_detection.layout import inference_dir, model_dir
 from turkey_audio_detection.manifest import build_stage_manifest, write_manifest
 from turkey_audio_detection.models.frame_sed import FrameSed
 from turkey_audio_detection.sed_data import LogMelExtractor, SedMelParams, normalize_log_mel
@@ -105,7 +105,6 @@ def stitch_windows(window_results: list[tuple[int, np.ndarray]], total_frames: i
     """Average overlapping per-frame probs onto a (N_CLASSES, total_frames) timeline.
 
     window_results: list of (frame_offset, probs[N_CLASSES, t_window]).
-    Frames covered by no window stay 0 (not scored, since inference is gated).
     """
     acc = np.zeros((N_CLASSES, total_frames), dtype=np.float32)
     cnt = np.zeros((N_CLASSES, total_frames), dtype=np.float32)
@@ -119,9 +118,18 @@ def stitch_windows(window_results: list[tuple[int, np.ndarray]], total_frames: i
     return np.divide(acc, cnt, out=np.zeros_like(acc), where=cnt > 0)
 
 
+def _window_starts(n_samples: int, win_n: int, stride_n: int) -> list[int]:
+    """Sample start indices tiling the whole signal, with a final flush-right window."""
+    if n_samples <= win_n:
+        return [0]
+    starts = list(range(0, n_samples - win_n + 1, stride_n))
+    if starts[-1] + win_n < n_samples:
+        starts.append(n_samples - win_n)
+    return starts
+
+
 def infer_recording(
     audio_path: Path,
-    windows: pd.DataFrame,
     model: FrameSed,
     mel: SedMelParams,
     extractor: LogMelExtractor,
@@ -130,36 +138,31 @@ def infer_recording(
     device: torch.device,
     inference_id: str,
 ) -> pd.DataFrame:
-    """Score one recording's candidate windows and return its events."""
+    """Slide the model over a full recording and return its events."""
     hop_s = (mel.hop_length * int(payload.get("time_downsample", 8))) / mel.sample_rate
     thresholds = cfg.thresholds or payload.get("thresholds", {}) or {}
-    dur_s = float(cfg.candidate_window_duration_s)
-    win_n = int(round(dur_s * mel.sample_rate))
+    win_n = int(round(cfg.window_duration_s * mel.sample_rate))
+    stride_n = max(1, int(round(cfg.window_stride_s * mel.sample_rate)))
 
     try:
-        info = sf.info(str(audio_path))
-        total_dur = float(info.frames / info.samplerate)
+        y, _ = librosa.load(str(audio_path), sr=mel.sample_rate, mono=True)
     except Exception:
         return pd.DataFrame()
-    total_frames = max(1, int(round(total_dur / hop_s)))
-
-    # Build + batch all candidate-window mels for this file.
-    offsets: list[int] = []
-    mels: list[np.ndarray] = []
-    for _, row in windows.iterrows():
-        start_s = float(row.get("start_time_s", 0.0))
-        end_s = float(row.get("end_time_s", start_s))
-        mid = (start_s + end_s) / 2.0
-        clip_start = max(0.0, mid - dur_s / 2.0)
-        y, _ = librosa.load(str(audio_path), sr=mel.sample_rate, mono=True, offset=clip_start, duration=dur_s)
-        if y.size < win_n:
-            y = np.concatenate([y, np.zeros(win_n - y.size, dtype=y.dtype)])
-        log_mel = normalize_log_mel(extractor(torch.from_numpy(y.astype(np.float32))).numpy(), mel)
-        mels.append(log_mel)
-        offsets.append(int(round(clip_start / hop_s)))
-
-    if not mels:
+    if y.size == 0:
         return pd.DataFrame()
+
+    total_frames = max(1, int(round((y.size / mel.sample_rate) / hop_s)))
+    starts = _window_starts(y.size, win_n, stride_n)
+
+    mels: list[np.ndarray] = []
+    offsets: list[int] = []
+    for s in starts:
+        seg = y[s : s + win_n]
+        if seg.size < win_n:
+            seg = np.concatenate([seg, np.zeros(win_n - seg.size, dtype=seg.dtype)])
+        log_mel = normalize_log_mel(extractor(torch.from_numpy(seg.astype(np.float32))).numpy(), mel)
+        mels.append(log_mel)
+        offsets.append(int(round((s / mel.sample_rate) / hop_s)))
 
     window_results: list[tuple[int, np.ndarray]] = []
     bs = max(1, cfg.batch_size)
@@ -191,19 +194,6 @@ def infer_recording(
     return pd.DataFrame(rows)
 
 
-def aggregate_counts(events: pd.DataFrame, site_map: dict[str, str]) -> pd.DataFrame:
-    """Events -> presence + counts per (site, date, sex)."""
-    if events.empty:
-        return pd.DataFrame(columns=pd.Index(["site_id", "date", "sex", "n_events", "present"]))
-    df = attach_site(events, site_map)
-    df["date"] = pd.to_datetime(
-        df["source_audio_path"].map(_date_from_path), errors="coerce"
-    ).dt.date.astype("string")
-    grouped = df.groupby(["site_id", "date", "sex"]).size().reset_index(name="n_events")
-    grouped["present"] = 1
-    return grouped
-
-
 def _date_from_path(path: str) -> str:
     import re
 
@@ -212,6 +202,17 @@ def _date_from_path(path: str) -> str:
         return ""
     d = m.group(1)
     return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+
+
+def aggregate_counts(events: pd.DataFrame, site_map: dict[str, str]) -> pd.DataFrame:
+    """Events -> presence + counts per (site, date, sex)."""
+    if events.empty:
+        return pd.DataFrame(columns=pd.Index(["site_id", "date", "sex", "n_events", "present"]))
+    df = attach_site(events, site_map)
+    df["date"] = pd.to_datetime(df["source_audio_path"].map(_date_from_path), errors="coerce").dt.date.astype("string")
+    grouped = df.groupby(["site_id", "date", "sex"]).size().reset_index(name="n_events")
+    grouped["present"] = 1
+    return grouped
 
 
 def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
@@ -223,13 +224,9 @@ def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
     mel = SedMelParams()
     extractor = LogMelExtractor(mel)
 
-    layout = RunLayout.from_project_root(Path(project_root), cfg.run_id)
-    detections_path = layout.birdnet_dir / "detections_normalized.csv"
-    if not detections_path.exists():
-        raise FileNotFoundError(f"Missing BirdNET candidates: {detections_path}")
-    det = pd.read_csv(detections_path)
-    if "species_common_name" in det.columns:
-        det = det[det["species_common_name"].astype(str).str.contains(cfg.species_match_substring, case=False, na=False)]
+    audio_files = sorted(Path(project_root).glob(cfg.audio_glob))
+    if not audio_files:
+        raise RuntimeError(f"No audio files matched glob: {cfg.audio_glob} under {project_root}")
 
     out_dir = inference_dir(Path(project_root), cfg.inference_id)
     events_dir = out_dir / "events"
@@ -237,23 +234,28 @@ def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
 
     all_events: list[pd.DataFrame] = []
     summary: list[dict] = []
-    for audio_path, windows in det.groupby("audio_path"):
-        ev = infer_recording(Path(str(audio_path)), windows, model, mel, extractor, payload, cfg, device, cfg.inference_id)
+    for audio_path in audio_files:
+        ev = infer_recording(audio_path, model, mel, extractor, payload, cfg, device, cfg.inference_id)
         if not ev.empty:
-            ev.to_csv(events_dir / (Path(str(audio_path)).stem + ".csv"), index=False)
+            ev.to_csv(events_dir / (audio_path.stem + ".csv"), index=False)
             all_events.append(ev)
         summary.append({"audio_path": str(audio_path), "n_events": int(len(ev))})
 
     events_df = pd.concat(all_events, ignore_index=True) if all_events else pd.DataFrame()
-    site_map = load_site_map(Path(project_root) / cfg.site_map_path)
-    aggregate_counts(events_df, site_map).to_csv(out_dir / "aggregate_counts.csv", index=False)
+    aggregate_counts(events_df, load_site_map(Path(project_root) / cfg.site_map_path)).to_csv(
+        out_dir / "aggregate_counts.csv", index=False
+    )
     pd.DataFrame(summary).to_csv(out_dir / "summary.csv", index=False)
 
     manifest = build_stage_manifest(
         run_id=cfg.inference_id, stage="classify", project_root=Path(project_root),
         config_snapshot={"sed_infer": cfg.model_dump(mode="json")},
         stage_outputs={"events_dir": str(events_dir), "summary_csv": str(out_dir / "summary.csv")},
-        status="completed", input_file_count=int(det["audio_path"].nunique()) if not det.empty else 0,
+        status="completed", input_file_count=len(audio_files),
     )
     write_manifest(out_dir / "inference_manifest.json", manifest)
-    return {"inference_id": cfg.inference_id, "n_events_total": int(sum(s["n_events"] for s in summary))}
+    return {
+        "inference_id": cfg.inference_id,
+        "n_files": len(audio_files),
+        "n_events_total": int(sum(s["n_events"] for s in summary)),
+    }

@@ -236,19 +236,19 @@ def _cmd_classify(args: argparse.Namespace) -> int:
     inference_id = args.inference_id or make_run_id(prefix="inf")
     cfg = SedInferConfig(
         model_id=args.model_id,
-        run_id=args.run_id,
+        audio_glob=args.audio_glob,
         inference_id=inference_id,
-        candidate_window_duration_s=args.candidate_window_duration,
+        window_duration_s=args.window_duration,
+        window_stride_s=args.window_stride,
         min_event_duration_s=args.min_event_duration,
         merge_gap_s=args.merge_gap,
-        species_match_substring=args.species_match,
         batch_size=args.batch_size,
         site_map_path=args.site_map_path,
     )
     result = infer_sed(cfg, project_root)
     _print(
         f"classify completed | inference_id={result['inference_id']} | "
-        f"events={result['n_events_total']}"
+        f"files={result['n_files']} events={result['n_events_total']}"
     )
     return 0
 
@@ -442,15 +442,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--seed", type=int, default=42)
     p_train.set_defaults(func=_cmd_train)
 
-    p_classify = sub.add_parser("classify", help="Run a trained SED model on a run's BirdNET candidates")
+    p_classify = sub.add_parser("classify", help="Run the trained SED model over full recordings")
     p_classify.add_argument("--project-root", required=True)
     p_classify.add_argument("--model-id", required=True)
-    p_classify.add_argument("--run-id", required=True, help="Run whose BirdNET candidates gate inference")
+    p_classify.add_argument("--audio-glob", default="data/ARU_*/**/*.wav")
     p_classify.add_argument("--inference-id")
-    p_classify.add_argument("--candidate-window-duration", type=float, default=3.0)
+    p_classify.add_argument("--window-duration", type=float, default=3.0)
+    p_classify.add_argument("--window-stride", type=float, default=1.0)
     p_classify.add_argument("--min-event-duration", type=float, default=0.1)
     p_classify.add_argument("--merge-gap", type=float, default=0.2)
-    p_classify.add_argument("--species-match", default="Wild Turkey")
     p_classify.add_argument("--batch-size", type=int, default=16)
     p_classify.add_argument("--site-map-path", default="data/site_map.csv")
     p_classify.set_defaults(func=_cmd_classify)
