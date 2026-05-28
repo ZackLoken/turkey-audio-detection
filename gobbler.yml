@@ -1,7 +1,7 @@
 name: gobbler
 
 # Minimal environment. Conda provides Python, CUDA-enabled PyTorch, and ffmpeg.
-# Everything else (librosa, streamlit, birdnetlib, panns-inference, etc.) is
+# Everything else (librosa, streamlit, birdnetlib, transformers, optuna, etc.) is
 # installed by `pip install -e .` via pyproject.toml after the env is created.
 
 channels:
