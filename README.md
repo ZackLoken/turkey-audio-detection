@@ -130,7 +130,7 @@ python -m turkey_audio_detection.cli evaluate --project-root . --model-id <model
 # Optuna hyperparameter search (resumable when given a --storage sqlite path).
 python -m turkey_audio_detection.cli hpo --project-root . --run-id <run_id> --n-trials 30 --storage hpo.db
 
-# Run the trained model over full recordings (sliding window). Emits
+# Run the trained model over full recordings (sliding window). Returns
 # per-call events (start_s, end_s, sex, score) and presence/counts per site/day.
 python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> --audio-glob "data/ARU_*/**/*.wav"
 ```
