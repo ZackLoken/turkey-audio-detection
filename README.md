@@ -52,7 +52,7 @@ project-root/
 
    The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes — **note it**, you'll need it for the review app.
 
-   > **Note:** All commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some locked-down lab machines block unsigned `.exe` wrappers under managed antivirus / AppLocker — the `python -m` form sidesteps that and works everywhere.
+   > **Note:** All commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some university machines block unsigned `.exe` wrappers under managed antivirus / AppLocker — the `python -m` form sidesteps that.
 
    > **Note:** TensorFlow and BirdNET print verbose INFO/WARNING messages to the console during startup. These are normal and can be ignored. A progress bar shows per-file status while BirdNET is running.
 
