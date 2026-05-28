@@ -135,12 +135,6 @@ python -m turkey_audio_detection.cli hpo --project-root . --run-id <run_id> --n-
 python -m turkey_audio_detection.cli classify --project-root . --model-id <model_id> --run-id <run_id>
 ```
 
-For a no-code workflow, launch the inference app (pick a trained model, drop in a WAV, get events + counts):
-
-```
-streamlit run src/turkey_audio_detection/app_infer.py
-```
-
 **Outputs:**
 - `data/_outputs/models/<model_id>/checkpoint.pt` — best-validation model state + config + mel params + per-class thresholds
 - `data/_outputs/models/<model_id>/train_metrics.csv` — per-phase/epoch loss + frame-level precision/recall/F1
