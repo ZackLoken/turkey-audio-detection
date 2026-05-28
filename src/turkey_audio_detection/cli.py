@@ -200,7 +200,6 @@ def _cmd_train(args: argparse.Namespace) -> int:
         site_map_path=args.site_map_path,
         val_fraction=args.val_fraction,
         test_fraction=args.test_fraction,
-        holdout_years=list(args.holdout_year or []),
         pretrained=not args.no_pretrained,
         n_stages=args.n_stages,
         temporal=args.temporal,
@@ -260,7 +259,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     from turkey_audio_detection.evaluation import evaluate_table, evaluation_to_rows
     from turkey_audio_detection.layout import model_dir
     from turkey_audio_detection.sed_inference import load_sed_model
-    from turkey_audio_detection.sed_training import site_year_split
+    from turkey_audio_detection.sed_training import site_split
     from turkey_audio_detection.sites import attach_site, load_site_map
     from turkey_audio_detection.training_labels import build_training_table
 
@@ -270,7 +269,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
         site_map_path=args.site_map_path, val_fraction=args.val_fraction,
         test_fraction=args.test_fraction, seed=args.seed,
     )
-    table = site_year_split(attach_site(table, load_site_map(project_root / args.site_map_path)), split_cfg)
+    table = site_split(attach_site(table, load_site_map(project_root / args.site_map_path)), split_cfg)
     test_df = table[table["split"] == "test"].reset_index(drop=True)
     if test_df.empty:
         _print("evaluate: test split is empty")
@@ -420,7 +419,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--site-map-path", default="data/site_map.csv")
     p_train.add_argument("--val-fraction", type=float, default=0.15)
     p_train.add_argument("--test-fraction", type=float, default=0.15)
-    p_train.add_argument("--holdout-year", action="append", type=int, help="Year(s) held out for test")
     p_train.add_argument("--include-non-consensus", action="store_true")
     p_train.add_argument("--no-pretrained", action="store_true")
     p_train.add_argument("--n-stages", type=int, default=2)

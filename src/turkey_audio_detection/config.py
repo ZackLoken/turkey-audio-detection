@@ -49,7 +49,6 @@ class SedTrainConfig(BaseModel):
     site_map_path: str = "data/site_map.csv"
     val_fraction: float = Field(default=0.15, ge=0.0, le=0.5)
     test_fraction: float = Field(default=0.15, ge=0.0, le=0.5)
-    holdout_years: list[int] = Field(default_factory=list)
 
     # model
     pretrained: bool = True

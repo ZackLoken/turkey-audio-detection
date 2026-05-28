@@ -18,7 +18,7 @@ from turkey_audio_detection.dataset import CLASS_INDEX
 from turkey_audio_detection.evaluation import evaluate_table
 from turkey_audio_detection.layout import model_dir
 from turkey_audio_detection.sed_inference import load_sed_model
-from turkey_audio_detection.sed_training import site_year_split, train_sed_from_table
+from turkey_audio_detection.sed_training import site_split, train_sed_from_table
 from turkey_audio_detection.sites import attach_site, load_site_map
 
 
@@ -41,7 +41,7 @@ def suggest_config(trial: optuna.Trial, base: SedTrainConfig) -> SedTrainConfig:
 def _val_split(table, cfg: SedTrainConfig, project_root: Path):
     site_map = load_site_map(Path(project_root) / cfg.site_map_path)
     t = attach_site(table, site_map)
-    t = site_year_split(t, cfg)
+    t = site_split(t, cfg)
     return t[t["split"] == "val"].reset_index(drop=True)
 
 

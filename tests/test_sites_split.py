@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from turkey_audio_detection.config import SedTrainConfig
-from turkey_audio_detection.sed_training import site_year_split
+from turkey_audio_detection.sed_training import site_split
 from turkey_audio_detection.sites import attach_site, load_site_map
 
 
@@ -40,22 +40,12 @@ def test_attach_site_fallback_to_aru() -> None:
     assert out.loc[out.aru_id == "ARU_99", "site_id"].iloc[0] == "ARU_99"
 
 
-def test_site_year_split_no_site_in_two_splits() -> None:
+def test_site_split_no_site_in_two_splits() -> None:
     arus = ["ARU_01", "ARU_02", "ARU_03", "ARU_04", "ARU_05", "ARU_06"]
     smap = {"ARU_01": "S1", "ARU_02": "S1", "ARU_03": "S2", "ARU_04": "S2", "ARU_05": "S3", "ARU_06": "S3"}
     table = attach_site(_table(arus), smap)
     cfg = SedTrainConfig(val_fraction=0.34, test_fraction=0.34, seed=0)
-    split = site_year_split(table, cfg)
+    split = site_split(table, cfg)
     # every site lands in exactly one split
     assert (split.groupby("site_id")["split"].nunique() == 1).all()
     assert set(split["split"]).issubset({"train", "val", "test"})
-
-
-def test_year_holdout_goes_to_test() -> None:
-    table = pd.concat([_table(["ARU_01"], year="2025"), _table(["ARU_01"], year="2026")], ignore_index=True)
-    table["item_id"] = ["a", "b"]
-    table = attach_site(table, {"ARU_01": "S1"})
-    cfg = SedTrainConfig(val_fraction=0.0, test_fraction=0.0, holdout_years=[2025], seed=0)
-    split = site_year_split(table, cfg)
-    assert split.loc[split.item_id == "a", "split"].iloc[0] == "test"
-    assert split.loc[split.item_id == "b", "split"].iloc[0] == "train"

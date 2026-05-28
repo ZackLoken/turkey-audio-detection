@@ -118,7 +118,7 @@ First, copy `site_map.example.csv` to `data/site_map.csv` and fill in one `aru_i
 
 ```
 # Train on one or more runs' labels. Aggregates per-reviewer CSVs via majority vote,
-# splits train/val/test grouped by SITE (+ optional --holdout-year) to avoid leakage,
+# splits train/val/test grouped by SITE to avoid leakage,
 # then fine-tunes a BirdSet-pretrained ConvNeXt frontend with a BiGRU temporal head,
 # gradually unfreezing backbone stages across phases (scaling LR/batch, early stopping).
 python -m turkey_audio_detection.cli train --project-root . --run-id <run_id> [--run-id <run_id> ...]
@@ -151,4 +151,4 @@ python -m turkey_audio_detection.cli classify --project-root . --model-id <model
 - Inference: the trained model slides over the **full recording** → average overlapping per-frame probs → per-class threshold → group frames into events → counts
 - Augmentation: SpecAugment + linear-power Mixup / background-mix
 
-**Splits & aggregation:** `train` groups train/val/test by site and can hold out whole years with `--holdout-year`. By default only consensus clips are used; pass `--include-non-consensus` to include disagreement-flagged clips.
+**Splits & aggregation:** `train` groups train/val/test by site (leave-site-out). By default only consensus clips are used; pass `--include-non-consensus` to include disagreement-flagged clips.

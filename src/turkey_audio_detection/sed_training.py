@@ -60,41 +60,29 @@ class FocalLoss(nn.Module):
         return ((1.0 - p_t) ** self.gamma * bce).mean()
 
 
-def site_year_split(table: pd.DataFrame, cfg: SedTrainConfig) -> pd.DataFrame:
-    """Assign train/val/test by SITE (no site in two splits) + optional year holdout.
-
-    Requires a `site_id` column (see sites.attach_site). Rows whose recording year
-    is in cfg.holdout_years go to test; the remaining sites are split by fraction.
-    """
+def site_split(table: pd.DataFrame, cfg: SedTrainConfig) -> pd.DataFrame:
+    """Assign train/val/test by SITE so no site appears in two splits (leave-site-out)."""
     out = table.copy()
     if "site_id" not in out.columns:
         out["site_id"] = out.get("aru_id", pd.Series([""] * len(out), index=out.index)).astype(str)
-    years = pd.to_datetime(out.get("recording_datetime"), errors="coerce").dt.year
-    holdout = {int(y) for y in (cfg.holdout_years or [])}
-    is_holdout = years.isin(holdout) if holdout else pd.Series(False, index=out.index)
-
-    rest_sites = sorted(out.loc[~is_holdout, "site_id"].astype(str).unique())
+    sites = sorted(out["site_id"].astype(str).unique())
     rng = np.random.default_rng(cfg.seed)
-    rng.shuffle(rest_sites)
-    n = len(rest_sites)
+    rng.shuffle(sites)
+    n = len(sites)
     n_val = int(round(n * cfg.val_fraction))
     n_test = int(round(n * cfg.test_fraction))
-    val_sites = set(rest_sites[:n_val])
-    test_sites = set(rest_sites[n_val : n_val + n_test])
+    val_sites = set(sites[:n_val])
+    test_sites = set(sites[n_val : n_val + n_test])
 
-    def _assign(row) -> str:
-        if holdout and not pd.isna(row["__year"]) and int(row["__year"]) in holdout:
-            return "test"
-        s = str(row["site_id"])
+    def _assign(site_id: object) -> str:
+        s = str(site_id)
         if s in val_sites:
             return "val"
         if s in test_sites:
             return "test"
         return "train"
 
-    out["__year"] = years
-    out["split"] = out.apply(_assign, axis=1)
-    out.drop(columns="__year", inplace=True)
+    out["split"] = out["site_id"].map(_assign)
     return out
 
 
@@ -186,7 +174,7 @@ def train_sed_from_table(table: pd.DataFrame, cfg: SedTrainConfig, project_root:
 
     site_map = load_site_map(Path(project_root) / cfg.site_map_path)
     table = attach_site(table, site_map)
-    table = site_year_split(table, cfg)
+    table = site_split(table, cfg)
     train_df = table[table["split"] == "train"].reset_index(drop=True)
     val_df = table[table["split"] == "val"].reset_index(drop=True)
     if train_df.empty:
