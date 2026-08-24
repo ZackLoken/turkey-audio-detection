@@ -50,11 +50,15 @@ project-root/
    python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project"
    ```
 
-   The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes — **note it**, you'll need it for the review app.
+   Processing thousands of files takes a while. Add `--prime-window-only` to restrict BirdNET to the window around sunrise when turkeys are most vocal (30 min before to 3 hr after, by default), which cuts total run time substantially:
 
-   > **Note:** All commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some university machines block unsigned `.exe` wrappers under managed antivirus / AppLocker — the `python -m` form sidesteps that.
+   ```
+   python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project" --prime-window-only
+   ```
 
-   > **Note:** TensorFlow and BirdNET print verbose INFO/WARNING messages to the console during startup. These are normal and can be ignored. A progress bar shows per-file status while BirdNET is running.
+   The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes, note it, you'll need it for the review app. TensorFlow and BirdNET print verbose startup messages to the console; these are normal. A progress bar shows per-file status while BirdNET is running.
+
+   > Note: all commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some university machines block unsigned `.exe` wrappers under managed antivirus / AppLocker, so the `python -m` form sidesteps that.
 
 5. Launch the review app:
 
@@ -62,11 +66,10 @@ project-root/
    python -m turkey_audio_detection.app
    ```
 
-   In the sidebar enter your **project root**, the **run ID** from step 4, and a **reviewer name**. For each clip, draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick **Other birds present** / **Unsure** when relevant, then click **Save & Next**. See the [Review app](#review-app) section below for details.
+   In the sidebar, set `Project root` to the same folder you passed to `--project-root` in step 4 (the one containing `data\`, not the run folder itself) and press Enter. `Run ID` then becomes a dropdown listing every run found under `data\_outputs\runs\`; pick the one from step 4. Add a reviewer name, then for each clip draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick `Other birds present` / `Unsure` when relevant, and click `Save & Next`. See the [Review app](#review-app) section below for details.
 
-**Troubleshooting:**
+### Troubleshooting
 - If `birdnetlib` fails to import, confirm ffmpeg is on your PATH: `conda install -c conda-forge ffmpeg`
-- If BirdNET is slow, add `--prime-window-only` to limit processing to recordings near sunrise
 - If audio playback is silent, check that your WAV files are readable: `python -c "import soundfile; print(soundfile.info('yourfile.wav'))"`
 
 ## Stage-by-stage CLI usage
