@@ -20,9 +20,9 @@ project-root/
 │       └── review/
 ```
 
-## Collaborator quickstart (Windows)
+## Setup (Windows)
 
-**Requirements:** Git for Windows, Anaconda or Miniconda.
+Requirements: Git for Windows, Anaconda or Miniconda.
 
 1. Clone the repository:
 
@@ -44,33 +44,37 @@ project-root/
    pip install -e .
    ```
 
-4. Put your audio data in `data/ARU_01/` (or `data/ARU_02/`, etc.) and run the full pipeline:
+## Run BirdNET detection
 
-   ```
-   python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project"
-   ```
+Put audio in `data/ARU_01/` (or `data/ARU_02/`, etc.) under your project root, then run the full pipeline:
 
-   Processing thousands of files takes a while. Add `--prime-window-only` to restrict BirdNET to the window around sunrise when turkeys are most vocal (30 min before to 3 hr after, by default), which cuts total run time substantially:
+```
+python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project"
+```
 
-   ```
-   python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project" --prime-window-only
-   ```
+Processing thousands of files takes a while. Add `--prime-window-only` to restrict BirdNET to the window around sunrise when turkeys are most vocal (30 min before to 3 hr after, by default), which cuts total run time substantially:
 
-   The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes, note it, you'll need it for the review app. TensorFlow and BirdNET print verbose startup messages to the console; these are normal. A progress bar shows per-file status while BirdNET is running.
+```
+python -m turkey_audio_detection.cli run-all --project-root "C:\path\to\your\project" --prime-window-only
+```
 
-   > Note: all commands in this README invoke the package as a Python module (`python -m turkey_audio_detection.cli ...`). The package also installs short console-script wrappers (`turkey-pipeline`, `turkey-review`, etc.) for convenience, but some university machines block unsigned `.exe` wrappers under managed antivirus / AppLocker, so the `python -m` form sidesteps that.
+The pipeline prints a `run_id` (e.g. `run_20260424T205153Z`) when it finishes, note it, whoever reviews the clips will need it. TensorFlow and BirdNET print verbose startup messages to the console; these are normal. A progress bar shows per-file status while BirdNET is running.
 
-5. Launch the review app:
+Individual stages can also be run one at a time; see [Stage-by-stage CLI usage](#stage-by-stage-cli-usage).
 
-   ```
-   python -m turkey_audio_detection.app
-   ```
+Troubleshooting: if `birdnetlib` fails to import, confirm ffmpeg is on your PATH: `conda install -c conda-forge ffmpeg`
 
-   In the sidebar, set `Project root` to the same folder you passed to `--project-root` in step 4 (the one containing `data\`, not the run folder itself) and press Enter. `Run ID` then becomes a dropdown listing every run found under `data\_outputs\runs\`; pick the one from step 4. Add a reviewer name, then for each clip draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick `Other birds present` / `Unsure` when relevant, and click `Save & Next`. See the [Review app](#review-app) section below for details.
+## Review candidate clips
 
-### Troubleshooting
-- If `birdnetlib` fails to import, confirm ffmpeg is on your PATH: `conda install -c conda-forge ffmpeg`
-- If audio playback is silent, check that your WAV files are readable: `python -c "import soundfile; print(soundfile.info('yourfile.wav'))"`
+Once you have the project's `data\` folder and a `run_id` from whoever ran BirdNET, launch the app:
+
+```
+python -m turkey_audio_detection.app
+```
+
+In the sidebar, set `Project root` to the folder containing that `data\` folder and press Enter. `Run ID` then becomes a dropdown listing every run found under `data\_outputs\runs\`; pick the one you were given. Add a reviewer name, then for each clip draw rectangles on the spectrogram around any Tom or Hen calls (switch the active-label radio between Tom and Hen as needed), tick `Other birds present` / `Unsure` when relevant, and click `Save & Next`. See the [Review app](#review-app) section below for details.
+
+Troubleshooting: if audio playback is silent, check that your WAV files are readable: `python -c "import soundfile; print(soundfile.info('yourfile.wav'))"`
 
 ## Stage-by-stage CLI usage
 
