@@ -46,6 +46,7 @@ def test_stage_extract_clips_builds_queue(tmp_path: Path) -> None:
 
     assert len(queue_df) == 1
     assert queue_df.iloc[0]["item_id"].startswith("itm_")
-    clip_path = Path(queue_df.iloc[0]["clip_path"])
+    clip_path = layout.run_root / queue_df.iloc[0]["clip_path"]
     assert clip_path.exists()
+    assert not Path(queue_df.iloc[0]["clip_path"]).is_absolute()
     assert (layout.queue_dir / "review_queue.csv").exists()

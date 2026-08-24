@@ -618,7 +618,7 @@ def main() -> None:
         f'</div>'
     )
 
-    clip_path = Path(str(row.get("clip_path", "")))
+    clip_path = _runs_dir(project_root) / run_id / str(row.get("clip_path", ""))
     if not clip_path.exists():
         st.error(f"Clip not found: {clip_path}")
         return

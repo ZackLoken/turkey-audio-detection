@@ -328,7 +328,7 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
             {
                 "item_id": item_id,
                 "detection_id": detection_id,
-                "clip_path": str(clip_path),
+                "clip_path": str(clip_path.relative_to(layout.run_root)),
                 "clip_start_s": clip_start,
                 "clip_end_s": clip_end,
                 "queue_order": 0,
@@ -377,7 +377,7 @@ def stage_cache_spectrograms(layout: RunLayout, force: bool = False) -> dict:
         dynamic_ncols=True,
     ):
         item_id = str(row["item_id"])
-        clip_path = Path(str(row["clip_path"]))
+        clip_path = layout.run_root / str(row["clip_path"])
         out_path = layout.spectrograms_dir / f"{item_id}.png"
         if out_path.exists() and not force:
             skipped += 1
