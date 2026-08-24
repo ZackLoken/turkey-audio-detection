@@ -130,46 +130,66 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
     return index_df, quarantine_df
 
 
+DETECTION_COLUMNS = pd.Index([
+    "detection_id", "project_root", "aru_id", "audio_path",
+    "start_time_s", "end_time_s", "species_code", "species_common_name",
+    "confidence", "birdnet_model_version", "source_filename", "source_row_index",
+])
+
+
 def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
+    """Run BirdNET over every indexed file, checkpointing after each one.
+
+    detections_normalized.csv and birdnet_progress.csv are rewritten after every
+    file, so a crash or shutdown mid-run loses at most the file in flight; calling
+    this again for the same run_id skips files already recorded in the progress
+    file and continues from there.
+    """
     index_path = layout.index_dir / "file_index.csv"
     if not index_path.exists():
         raise FileNotFoundError(f"Missing index CSV: {index_path}")
 
+    layout.birdnet_dir.mkdir(parents=True, exist_ok=True)
+    detections_path = layout.birdnet_dir / "detections_normalized.csv"
+    progress_path = layout.birdnet_dir / "birdnet_progress.csv"
+    errors_path = layout.birdnet_dir / "birdnet_errors.csv"
+
     df_index = pd.read_csv(index_path)
     if df_index.empty:
-        out = pd.DataFrame(
-            columns=pd.Index([
-                "detection_id",
-                "project_root",
-                "aru_id",
-                "audio_path",
-                "start_time_s",
-                "end_time_s",
-                "species_code",
-                "species_common_name",
-                "confidence",
-                "birdnet_model_version",
-                "source_filename",
-                "source_row_index",
-            ])
-        )
-        out.to_csv(layout.birdnet_dir / "detections_normalized.csv", index=False)
+        out = pd.DataFrame(columns=DETECTION_COLUMNS)
+        out.to_csv(detections_path, index=False)
         return out
 
     if cfg.prime_window_only and "in_prime_window" in df_index.columns:
-        df_index = df_index[df_index["in_prime_window"].astype(bool)].reset_index(drop=True)
+        df_index = df_index[df_index["in_prime_window"].astype(bool)]
+
+    processed_filepaths: set[str] = set()
+    rows: list[dict] = []
+    errors: list[dict] = []
+    if progress_path.exists():
+        processed_filepaths = set(pd.read_csv(progress_path)["filepath"].astype(str))
+    if detections_path.exists():
+        rows = pd.read_csv(detections_path).to_dict("records")
+    if errors_path.exists():
+        errors = pd.read_csv(errors_path).to_dict("records")
+
+    remaining_df = df_index[~df_index["filepath"].astype(str).isin(processed_filepaths)]
 
     from birdnetlib import Recording
     from birdnetlib.analyzer import Analyzer
     from tqdm import tqdm
 
     analyzer = Analyzer()
-    rows: list[dict] = []
-    errors: list[dict] = []
+
+    def _checkpoint() -> None:
+        pd.DataFrame({"filepath": sorted(processed_filepaths)}).to_csv(progress_path, index=False)
+        pd.DataFrame(rows, columns=DETECTION_COLUMNS).to_csv(detections_path, index=False)
+        if errors:
+            pd.DataFrame(errors, columns=pd.Index(["filepath", "error"])).to_csv(errors_path, index=False)
 
     for row_idx, row in tqdm(
-        df_index.iterrows(),
-        total=len(df_index),
+        remaining_df.iterrows(),
+        total=len(remaining_df),
         desc="BirdNET",
         unit="file",
         dynamic_ncols=True,
@@ -195,6 +215,8 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
             recording.analyze()
         except Exception as exc:
             errors.append({"filepath": audio_path, "error": str(exc)})
+            processed_filepaths.add(audio_path)
+            _checkpoint()
             continue
 
         for det in recording.detections:
@@ -228,19 +250,13 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
                 }
             )
 
-    detection_columns = pd.Index([
-        "detection_id", "project_root", "aru_id", "audio_path",
-        "start_time_s", "end_time_s", "species_code", "species_common_name",
-        "confidence", "birdnet_model_version", "source_filename", "source_row_index",
-    ])
-    out_df = pd.DataFrame(rows, columns=detection_columns) if rows else pd.DataFrame(columns=detection_columns)
+        processed_filepaths.add(audio_path)
+        _checkpoint()
+
+    out_df = pd.DataFrame(rows, columns=DETECTION_COLUMNS)
     if not out_df.empty:
         out_df.sort_values(["audio_path", "start_time_s", "end_time_s"], inplace=True, ignore_index=True)
-    if errors:
-        error_path = layout.birdnet_dir / "birdnet_errors.csv"
-        pd.DataFrame(errors, columns=pd.Index(["filepath", "error"])).to_csv(error_path, index=False)
-    layout.birdnet_dir.mkdir(parents=True, exist_ok=True)
-    out_df.to_csv(layout.birdnet_dir / "detections_normalized.csv", index=False)
+    out_df.to_csv(detections_path, index=False)
     return out_df
 
 
