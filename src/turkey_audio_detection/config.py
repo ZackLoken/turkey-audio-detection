@@ -14,8 +14,8 @@ class IndexConfig(BaseModel):
     timezone_name: str = "US/Eastern"
     latitude: float = 41.7
     longitude: float = -71.5
-    prime_window_minutes_before: float = 90.0
-    prime_window_minutes_after: float = 90.0
+    prime_window_minutes_before: float = 30.0
+    prime_window_minutes_after: float = 180.0
     wav_glob: str = "*.wav"
 
 
