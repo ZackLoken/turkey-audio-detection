@@ -797,7 +797,7 @@ def main() -> None:
     )
     unsure = bool(canvas_state.get("unsure", initial_unsure))
 
-    action_cols = st.columns([2, 1, 1, 1])
+    action_cols = st.columns([2, 1, 1, 1, 1])
     save_clicked = action_cols[0].button(
         "Save & Next", type="primary", width="stretch"
     )
@@ -806,6 +806,19 @@ def main() -> None:
     jump_clicked = action_cols[3].button(
         "Jump to first unlabeled", width="stretch"
     )
+    goto_value = action_cols[4].number_input(
+        "Go to #",
+        min_value=1,
+        max_value=total,
+        value=cursor + 1,
+        step=1,
+        key=f"goto_{run_id}",
+    )
+    goto_clicked = action_cols[4].button("Go", width="stretch")
+
+    if goto_clicked:
+        st.session_state["cursor"] = int(goto_value) - 1
+        st.rerun()
 
     if save_clicked:
         regions: list[dict] = []
