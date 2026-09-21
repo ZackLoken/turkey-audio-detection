@@ -1,8 +1,8 @@
 """Tests for resume/idempotency behavior per plan verification item 7."""
 
+import json
 from pathlib import Path
 
-import json
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,7 +10,10 @@ import soundfile as sf
 
 from turkey_audio_detection.config import BirdNetConfig, ClipConfig
 from turkey_audio_detection.layout import RunLayout
-from turkey_audio_detection.stages import stage_extract_clips, stage_run_birdnet
+from turkey_audio_detection.stages import (
+    stage_extract_clips,
+    stage_run_birdnet,
+)
 
 
 def _make_wav(path: Path, duration_s: float = 6.0, sr: int = 16000) -> None:
@@ -42,7 +45,9 @@ def _make_detections(layout: RunLayout, wav_path: Path) -> pd.DataFrame:
     return df
 
 
-def test_extract_clips_no_duplicate_queue_rows_on_rerun(tmp_path: Path) -> None:
+def test_extract_clips_no_duplicate_queue_rows_on_rerun(
+    tmp_path: Path,
+) -> None:
     """Running stage_extract_clips twice on the same detections must not produce duplicate queue rows."""
     layout = RunLayout.from_project_root(tmp_path, "run_20260424T010101Z")
     layout.ensure_dirs()
@@ -58,7 +63,9 @@ def test_extract_clips_no_duplicate_queue_rows_on_rerun(tmp_path: Path) -> None:
 
     # queue CSV is replace-on-rerun for same run_id
     final_queue = pd.read_csv(layout.queue_dir / "review_queue.csv")
-    assert len(final_queue) == 1, f"Expected 1 queue row, got {len(final_queue)}"
+    assert len(final_queue) == 1, (
+        f"Expected 1 queue row, got {len(final_queue)}"
+    )
     assert final_queue["item_id"].nunique() == 1
 
 
@@ -81,7 +88,9 @@ def _make_fake_recording_cls(detections_by_path: dict, crash_on_path: str):
     return _FakeRecording
 
 
-def test_run_birdnet_resumes_after_interruption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_birdnet_resumes_after_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A crash mid-run must not force reprocessing files already checkpointed."""
     import birdnetlib
     import birdnetlib.analyzer
@@ -116,18 +125,30 @@ def test_run_birdnet_resumes_after_interruption(tmp_path: Path, monkeypatch: pyt
     }
 
     monkeypatch.setattr(birdnetlib.analyzer, "Analyzer", _FakeAnalyzer)
-    monkeypatch.setattr(birdnetlib, "Recording", _make_fake_recording_cls(detections_by_path, crash_on_path=paths[2]))
+    monkeypatch.setattr(
+        birdnetlib,
+        "Recording",
+        _make_fake_recording_cls(detections_by_path, crash_on_path=paths[2]),
+    )
 
     with pytest.raises(KeyboardInterrupt):
         stage_run_birdnet(layout, BirdNetConfig())
 
-    progress_after_crash = pd.read_csv(layout.birdnet_dir / "birdnet_progress.csv")
+    progress_after_crash = pd.read_csv(
+        layout.birdnet_dir / "birdnet_progress.csv"
+    )
     assert set(progress_after_crash["filepath"]) == {paths[0], paths[1]}
-    detections_after_crash = pd.read_csv(layout.birdnet_dir / "detections_normalized.csv")
+    detections_after_crash = pd.read_csv(
+        layout.birdnet_dir / "detections_normalized.csv"
+    )
     assert set(detections_after_crash["audio_path"]) == {paths[0], paths[1]}
 
     # Resume: the fake Recording no longer crashes on any file.
-    monkeypatch.setattr(birdnetlib, "Recording", _make_fake_recording_cls(detections_by_path, crash_on_path="never"))
+    monkeypatch.setattr(
+        birdnetlib,
+        "Recording",
+        _make_fake_recording_cls(detections_by_path, crash_on_path="never"),
+    )
     out_df = stage_run_birdnet(layout, BirdNetConfig())
 
     assert set(out_df["audio_path"]) == set(paths)
@@ -147,7 +168,15 @@ def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
         "reviewer_id": "reviewer_1",
         "reviewer_name": "reviewer_1",
         "regions_json": json.dumps(
-            [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}],
+            [
+                {
+                    "start_s": 0.5,
+                    "end_s": 1.5,
+                    "freq_min_hz": 250,
+                    "freq_max_hz": 1500,
+                    "label": "Tom",
+                }
+            ],
             separators=(",", ":"),
         ),
         "other_birds_present": 1,
@@ -169,7 +198,14 @@ def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
     _append_label_row(project_root, base_row)
     _append_label_row(project_root, updated_row)
 
-    labels_path = project_root / "data" / "_outputs" / "review" / "labels" / "reviewer_1.csv"
+    labels_path = (
+        project_root
+        / "data"
+        / "_outputs"
+        / "review"
+        / "labels"
+        / "reviewer_1.csv"
+    )
     all_labels = pd.read_csv(labels_path)
     assert len(all_labels) == 2, "Raw label history must preserve both rows"
 

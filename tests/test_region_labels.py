@@ -1,7 +1,6 @@
 """Tests for the canvas-region helpers and the new label-CSV schema."""
 
 import json
-import math
 
 import pytest
 
@@ -24,17 +23,21 @@ from turkey_audio_detection.spectrogram_render import data_area_bounds
 
 def test_pixel_y_to_hz_endpoints() -> None:
     # py=0 is the top of the canvas → high frequency end.
-    assert pixel_y_to_hz(0, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ) == pytest.approx(CANVAS_FMAX_HZ)
+    assert pixel_y_to_hz(
+        0, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
+    ) == pytest.approx(CANVAS_FMAX_HZ)
     # py=canvas_h is the bottom → low frequency end.
-    assert pixel_y_to_hz(CANVAS_HEIGHT, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ) == pytest.approx(
-        CANVAS_FMIN_HZ
-    )
+    assert pixel_y_to_hz(
+        CANVAS_HEIGHT, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
+    ) == pytest.approx(CANVAS_FMIN_HZ)
 
 
 def test_pixel_y_to_hz_clips_out_of_range() -> None:
     # Out-of-bounds py values are clamped so we never get NaNs into regions_json.
     high = pixel_y_to_hz(-10, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ)
-    low = pixel_y_to_hz(CANVAS_HEIGHT + 10, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ)
+    low = pixel_y_to_hz(
+        CANVAS_HEIGHT + 10, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
+    )
     assert high == pytest.approx(CANVAS_FMAX_HZ)
     assert low == pytest.approx(CANVAS_FMIN_HZ)
 
@@ -49,7 +52,9 @@ def test_hz_to_pixel_y_round_trip() -> None:
 def test_rect_to_region_basic_tom() -> None:
     # Rect drawn entirely inside the spectrogram data area (i.e., to the right of
     # the frequency-axis label margin on the left edge of the canvas).
-    data_left, data_top, data_right, data_bottom = data_area_bounds(CANVAS_WIDTH, CANVAS_HEIGHT)
+    data_left, data_top, data_right, data_bottom = data_area_bounds(
+        CANVAS_WIDTH, CANVAS_HEIGHT
+    )
     data_w = data_right - data_left
     left_px = data_left + data_w * 0.25
     width_px = data_w * 0.25
@@ -62,14 +67,25 @@ def test_rect_to_region_basic_tom() -> None:
         "stroke": STROKE_COLOR_TOM,
     }
     region = rect_to_region(
-        obj, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=False
+        obj,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+        snap_freq=False,
     )
     assert region is not None
     assert region["label"] == "Tom"
     # 25 % into the data area → 0.75 s; +25 % more → 1.5 s.
     assert region["start_s"] == pytest.approx(0.75, abs=1e-3)
     assert region["end_s"] == pytest.approx(1.5, abs=1e-3)
-    assert CANVAS_FMIN_HZ < region["freq_min_hz"] < region["freq_max_hz"] < CANVAS_FMAX_HZ
+    assert (
+        CANVAS_FMIN_HZ
+        < region["freq_min_hz"]
+        < region["freq_max_hz"]
+        < CANVAS_FMAX_HZ
+    )
 
 
 def test_rect_to_region_hen_stroke_resolves_to_hen() -> None:
@@ -82,7 +98,13 @@ def test_rect_to_region_hen_stroke_resolves_to_hen() -> None:
         "stroke": STROKE_COLOR_HEN,
     }
     region = rect_to_region(
-        obj, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=False
+        obj,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+        snap_freq=False,
     )
     assert region is not None
     assert region["label"] == "Hen"
@@ -98,7 +120,13 @@ def test_rect_to_region_snap_freq_clamps_to_canvas_band() -> None:
         "stroke": STROKE_COLOR_TOM,
     }
     region = rect_to_region(
-        obj, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=True
+        obj,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+        snap_freq=True,
     )
     assert region is not None
     assert region["freq_min_hz"] == pytest.approx(CANVAS_FMIN_HZ)
@@ -115,9 +143,18 @@ def test_rect_to_region_zero_size_drops() -> None:
             "height": float(h),
             "stroke": STROKE_COLOR_TOM,
         }
-        assert rect_to_region(
-            obj, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=False
-        ) is None
+        assert (
+            rect_to_region(
+                obj,
+                CANVAS_WIDTH,
+                CANVAS_HEIGHT,
+                3.0,
+                CANVAS_FMIN_HZ,
+                CANVAS_FMAX_HZ,
+                snap_freq=False,
+            )
+            is None
+        )
 
 
 def test_rect_to_region_clips_time_to_clip_duration() -> None:
@@ -131,7 +168,13 @@ def test_rect_to_region_clips_time_to_clip_duration() -> None:
         "stroke": STROKE_COLOR_TOM,
     }
     region = rect_to_region(
-        obj, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=False
+        obj,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+        snap_freq=False,
     )
     assert region is not None
     assert region["end_s"] == pytest.approx(3.0, abs=1e-3)
@@ -145,15 +188,32 @@ def test_region_round_trip_through_rect() -> None:
         "freq_max_hz": 2500.0,
         "label": "Tom",
     }
-    rect = region_to_rect(original, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ)
+    rect = region_to_rect(
+        original,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+    )
     region = rect_to_region(
-        rect, CANVAS_WIDTH, CANVAS_HEIGHT, 3.0, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ, snap_freq=False
+        rect,
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
+        3.0,
+        CANVAS_FMIN_HZ,
+        CANVAS_FMAX_HZ,
+        snap_freq=False,
     )
     assert region is not None
     assert region["start_s"] == pytest.approx(original["start_s"], abs=1e-2)
     assert region["end_s"] == pytest.approx(original["end_s"], abs=1e-2)
-    assert region["freq_min_hz"] == pytest.approx(original["freq_min_hz"], rel=1e-3)
-    assert region["freq_max_hz"] == pytest.approx(original["freq_max_hz"], rel=1e-3)
+    assert region["freq_min_hz"] == pytest.approx(
+        original["freq_min_hz"], rel=1e-3
+    )
+    assert region["freq_max_hz"] == pytest.approx(
+        original["freq_max_hz"], rel=1e-3
+    )
     assert region["label"] == "Tom"
 
 
@@ -176,8 +236,20 @@ def test_parse_regions_handles_empty_and_invalid() -> None:
 
 def test_regions_json_round_trip_via_json_module() -> None:
     regions = [
-        {"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250.0, "freq_max_hz": 1500.0, "label": "Tom"},
-        {"start_s": 2.0, "end_s": 2.7, "freq_min_hz": 600.0, "freq_max_hz": 2500.0, "label": "Hen"},
+        {
+            "start_s": 0.5,
+            "end_s": 1.5,
+            "freq_min_hz": 250.0,
+            "freq_max_hz": 1500.0,
+            "label": "Tom",
+        },
+        {
+            "start_s": 2.0,
+            "end_s": 2.7,
+            "freq_min_hz": 600.0,
+            "freq_max_hz": 2500.0,
+            "label": "Hen",
+        },
     ]
     serialized = json.dumps(regions, separators=(",", ":"))
     restored = _parse_regions(serialized)

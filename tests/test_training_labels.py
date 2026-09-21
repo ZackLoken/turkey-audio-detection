@@ -4,12 +4,23 @@ import json
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
-from turkey_audio_detection.training_labels import _majority_vote, aggregate_reviewers
+from turkey_audio_detection.training_labels import (
+    _majority_vote,
+    aggregate_reviewers,
+)
 
 
-def _label_row(item_id: str, reviewer_id: str, regions, ts: str, tom: int, hen: int, other: int = 0, unsure: int = 0) -> dict:
+def _label_row(
+    item_id: str,
+    reviewer_id: str,
+    regions,
+    ts: str,
+    tom: int,
+    hen: int,
+    other: int = 0,
+    unsure: int = 0,
+) -> dict:
     return {
         "item_id": item_id,
         "detection_id": "det_" + item_id,
@@ -52,8 +63,23 @@ def test_aggregate_single_reviewer_passes_through(tmp_path: Path) -> None:
     labels_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         [
-            _label_row("i1", "r1", [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}],
-                       "2026-05-01T00:00:00+00:00", tom=1, hen=0, other=1),
+            _label_row(
+                "i1",
+                "r1",
+                [
+                    {
+                        "start_s": 0.5,
+                        "end_s": 1.5,
+                        "freq_min_hz": 250,
+                        "freq_max_hz": 1500,
+                        "label": "Tom",
+                    }
+                ],
+                "2026-05-01T00:00:00+00:00",
+                tom=1,
+                hen=0,
+                other=1,
+            ),
         ]
     ).to_csv(labels_dir / "r1.csv", index=False)
 
@@ -70,16 +96,42 @@ def test_aggregate_single_reviewer_passes_through(tmp_path: Path) -> None:
 def test_aggregate_majority_two_of_three(tmp_path: Path) -> None:
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
-    base_region = [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}]
-    pd.DataFrame([_label_row("i1", "r1", base_region, "2026-05-01T00:00:00+00:00", tom=1, hen=0)]).to_csv(
-        labels_dir / "r1.csv", index=False
-    )
-    pd.DataFrame([_label_row("i1", "r2", base_region, "2026-05-01T00:00:00+00:00", tom=1, hen=0)]).to_csv(
-        labels_dir / "r2.csv", index=False
-    )
-    pd.DataFrame([_label_row("i1", "r3", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)]).to_csv(
-        labels_dir / "r3.csv", index=False
-    )
+    base_region = [
+        {
+            "start_s": 0.5,
+            "end_s": 1.5,
+            "freq_min_hz": 250,
+            "freq_max_hz": 1500,
+            "label": "Tom",
+        }
+    ]
+    pd.DataFrame(
+        [
+            _label_row(
+                "i1",
+                "r1",
+                base_region,
+                "2026-05-01T00:00:00+00:00",
+                tom=1,
+                hen=0,
+            )
+        ]
+    ).to_csv(labels_dir / "r1.csv", index=False)
+    pd.DataFrame(
+        [
+            _label_row(
+                "i1",
+                "r2",
+                base_region,
+                "2026-05-01T00:00:00+00:00",
+                tom=1,
+                hen=0,
+            )
+        ]
+    ).to_csv(labels_dir / "r2.csv", index=False)
+    pd.DataFrame(
+        [_label_row("i1", "r3", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)]
+    ).to_csv(labels_dir / "r3.csv", index=False)
 
     agg = aggregate_reviewers(labels_dir)
     assert len(agg) == 1
@@ -95,13 +147,30 @@ def test_aggregate_majority_two_of_three(tmp_path: Path) -> None:
 def test_aggregate_tie_marks_non_consensus(tmp_path: Path) -> None:
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
-    region_tom = [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}]
-    pd.DataFrame([_label_row("i1", "r1", region_tom, "2026-05-01T00:00:00+00:00", tom=1, hen=0)]).to_csv(
-        labels_dir / "r1.csv", index=False
-    )
-    pd.DataFrame([_label_row("i1", "r2", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)]).to_csv(
-        labels_dir / "r2.csv", index=False
-    )
+    region_tom = [
+        {
+            "start_s": 0.5,
+            "end_s": 1.5,
+            "freq_min_hz": 250,
+            "freq_max_hz": 1500,
+            "label": "Tom",
+        }
+    ]
+    pd.DataFrame(
+        [
+            _label_row(
+                "i1",
+                "r1",
+                region_tom,
+                "2026-05-01T00:00:00+00:00",
+                tom=1,
+                hen=0,
+            )
+        ]
+    ).to_csv(labels_dir / "r1.csv", index=False)
+    pd.DataFrame(
+        [_label_row("i1", "r2", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)]
+    ).to_csv(labels_dir / "r2.csv", index=False)
 
     agg = aggregate_reviewers(labels_dir)
     assert len(agg) == 1
@@ -115,9 +184,20 @@ def test_aggregate_latest_wins_per_reviewer(tmp_path: Path) -> None:
     labels_dir.mkdir(parents=True, exist_ok=True)
     old = _label_row("i1", "r1", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)
     new = _label_row(
-        "i1", "r1",
-        [{"start_s": 0.5, "end_s": 1.5, "freq_min_hz": 250, "freq_max_hz": 1500, "label": "Tom"}],
-        "2026-05-01T01:00:00+00:00", tom=1, hen=0,
+        "i1",
+        "r1",
+        [
+            {
+                "start_s": 0.5,
+                "end_s": 1.5,
+                "freq_min_hz": 250,
+                "freq_max_hz": 1500,
+                "label": "Tom",
+            }
+        ],
+        "2026-05-01T01:00:00+00:00",
+        tom=1,
+        hen=0,
     )
     pd.DataFrame([old, new]).to_csv(labels_dir / "r1.csv", index=False)
 
@@ -130,12 +210,32 @@ def test_aggregate_unsure_majority_kills_consensus(tmp_path: Path) -> None:
     the present-attributes agree."""
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame([_label_row("i1", "r1", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0, unsure=1)]).to_csv(
-        labels_dir / "r1.csv", index=False
-    )
-    pd.DataFrame([_label_row("i1", "r2", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0, unsure=1)]).to_csv(
-        labels_dir / "r2.csv", index=False
-    )
+    pd.DataFrame(
+        [
+            _label_row(
+                "i1",
+                "r1",
+                [],
+                "2026-05-01T00:00:00+00:00",
+                tom=0,
+                hen=0,
+                unsure=1,
+            )
+        ]
+    ).to_csv(labels_dir / "r1.csv", index=False)
+    pd.DataFrame(
+        [
+            _label_row(
+                "i1",
+                "r2",
+                [],
+                "2026-05-01T00:00:00+00:00",
+                tom=0,
+                hen=0,
+                unsure=1,
+            )
+        ]
+    ).to_csv(labels_dir / "r2.csv", index=False)
 
     agg = aggregate_reviewers(labels_dir)
     assert bool(agg.iloc[0]["consensus"]) is False

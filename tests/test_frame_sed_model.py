@@ -13,8 +13,12 @@ from turkey_audio_detection.unfreeze import set_trainable
 def _model(temporal: str = "bigru") -> FrameSed:
     # pretrained=False uses a small ConvNext config -> no network/download.
     return FrameSed(
-        n_classes=2, n_stages=2, temporal=temporal,
-        hidden_size=32, n_layers=1, pretrained=False,
+        n_classes=2,
+        n_stages=2,
+        temporal=temporal,
+        hidden_size=32,
+        n_layers=1,
+        pretrained=False,
     )
 
 
@@ -44,7 +48,9 @@ def test_backward_flows() -> None:
     model = _model()
     logits = model(torch.randn(2, 128, 301))
     logits.float().pow(2).mean().backward()
-    assert any(p.grad is not None for p in model.parameters() if p.requires_grad)
+    assert any(
+        p.grad is not None for p in model.parameters() if p.requires_grad
+    )
 
 
 def test_tcn_head() -> None:
@@ -56,7 +62,9 @@ def test_tcn_head() -> None:
 
 def test_time_downsample_factor() -> None:
     model = _model()
-    assert model.backbone.time_downsample == 8  # 4x stem * 2x (one stage after the first)
+    assert (
+        model.backbone.time_downsample == 8
+    )  # 4x stem * 2x (one stage after the first)
 
 
 def test_gradual_unfreeze_groups() -> None:
@@ -66,10 +74,15 @@ def test_gradual_unfreeze_groups() -> None:
 
     set_trainable(model, 2)  # head only (classifier + temporal)
     backbone_trainable = sum(
-        p.numel() for _n, m in model.backbone.stage_groups() for p in m.parameters() if p.requires_grad
+        p.numel()
+        for _n, m in model.backbone.stage_groups()
+        for p in m.parameters()
+        if p.requires_grad
     )
     assert backbone_trainable == 0
-    head_trainable = sum(p.numel() for p in model.classifier.parameters() if p.requires_grad)
+    head_trainable = sum(
+        p.numel() for p in model.classifier.parameters() if p.requires_grad
+    )
     assert head_trainable > 0
 
     set_trainable(model, len(groups))  # everything

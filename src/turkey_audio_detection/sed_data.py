@@ -26,16 +26,19 @@ import torch.nn.functional as F
 import torchaudio
 from torch.utils.data import Dataset
 
-from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES, parse_regions
-
+from turkey_audio_detection.dataset import (
+    CLASS_INDEX,
+    N_CLASSES,
+    parse_regions,
+)
 
 # Mel config of DBD-research-group/ConvNeXT-Base-BirdSet-XCL (must match to reuse weights).
 SED_SR = 32000
 SED_N_FFT = 1024
-SED_HOP = 320              # 32000/320 = 100 frames/s -> 10 ms/frame at the mel
+SED_HOP = 320  # 32000/320 = 100 frames/s -> 10 ms/frame at the mel
 SED_N_MELS = 128
-SED_FMIN = 0.0             # torchaudio MelScale defaults (BirdSet did not override)
-SED_FMAX = 16000.0         # sample_rate / 2
+SED_FMIN = 0.0  # torchaudio MelScale defaults (BirdSet did not override)
+SED_FMAX = 16000.0  # sample_rate / 2
 SED_TOP_DB = 80.0
 SED_NORM_MEAN = -4.268
 SED_NORM_STD = 4.569
@@ -70,25 +73,36 @@ class LogMelExtractor(torch.nn.Module):
             n_fft=p.n_fft, hop_length=p.hop_length, power=2.0
         )
         self.melscale = torchaudio.transforms.MelScale(
-            n_mels=p.n_mels, sample_rate=p.sample_rate, n_stft=p.n_fft // 2 + 1,
-            f_min=p.fmin, f_max=p.fmax,
+            n_mels=p.n_mels,
+            sample_rate=p.sample_rate,
+            n_stft=p.n_fft // 2 + 1,
+            f_min=p.fmin,
+            f_max=p.fmax,
         )
 
     @torch.no_grad()
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:  # (..., samples) -> (..., n_mels, T)
+    def forward(
+        self, waveform: torch.Tensor
+    ) -> torch.Tensor:  # (..., samples) -> (..., n_mels, T)
         power = self.spec(waveform)
         mel = self.melscale(power)
         db = 10.0 * torch.log10(torch.clamp(mel, min=self.p.amin))
-        db = torch.maximum(db, db.amax(dim=(-2, -1), keepdim=True) - self.p.top_db)
+        db = torch.maximum(
+            db, db.amax(dim=(-2, -1), keepdim=True) - self.p.top_db
+        )
         return db
 
 
-def normalize_log_mel(log_mel_db: np.ndarray, p: SedMelParams = SedMelParams()) -> np.ndarray:
+def normalize_log_mel(
+    log_mel_db: np.ndarray, p: SedMelParams = SedMelParams()
+) -> np.ndarray:
     """Standardize dB log-mel with BirdSet's ESC-50 mean/std."""
     return ((log_mel_db - p.norm_mean) / p.norm_std).astype(np.float32)
 
 
-def load_waveform(audio_path: str | Path, target_duration_s: float, sample_rate: int = SED_SR) -> np.ndarray:
+def load_waveform(
+    audio_path: str | Path, target_duration_s: float, sample_rate: int = SED_SR
+) -> np.ndarray:
     """Load mono WAV at `sample_rate`, pad/truncate to `target_duration_s`."""
     y, _ = librosa.load(str(audio_path), sr=sample_rate, mono=True)
     n = int(round(target_duration_s * sample_rate))
@@ -132,7 +146,9 @@ def downsample_targets(target: np.ndarray, t_out: int) -> np.ndarray:
     """
     if target.shape[-1] == t_out:
         return target.astype(np.float32)
-    t = torch.from_numpy(np.ascontiguousarray(target, dtype=np.float32)).unsqueeze(0)  # (1,C,T)
+    t = torch.from_numpy(
+        np.ascontiguousarray(target, dtype=np.float32)
+    ).unsqueeze(0)  # (1,C,T)
     pooled = F.adaptive_max_pool1d(t, t_out)
     return pooled.squeeze(0).numpy()
 
@@ -162,14 +178,23 @@ class FrameSedDataset(Dataset):
 
     def __getitem__(self, idx: int):
         row = self.table.iloc[idx]
-        wav = load_waveform(str(row["clip_path"]), self.clip_duration_s, self.p.sample_rate)
-        log_mel = self.extractor(torch.from_numpy(wav)).numpy()  # (n_mels, T) dB
+        wav = load_waveform(
+            str(row["clip_path"]), self.clip_duration_s, self.p.sample_rate
+        )
+        log_mel = self.extractor(
+            torch.from_numpy(wav)
+        ).numpy()  # (n_mels, T) dB
         n_frames = log_mel.shape[1]
 
         regions = parse_regions(row.get("regions_json", ""))
-        target = regions_to_frame_targets(regions, n_frames=n_frames, p=self.p)  # (C, T)
+        target = regions_to_frame_targets(
+            regions, n_frames=n_frames, p=self.p
+        )  # (C, T)
         weak = np.array(
-            [float(row.get("tom_present", 0) or 0), float(row.get("hen_present", 0) or 0)],
+            [
+                float(row.get("tom_present", 0) or 0),
+                float(row.get("hen_present", 0) or 0),
+            ],
             dtype=np.float32,
         )
 

@@ -26,7 +26,9 @@ def _table(arus, year="2026"):
 
 def test_load_site_map(tmp_path) -> None:
     p = tmp_path / "site_map.csv"
-    pd.DataFrame({"aru_id": ["ARU_01", "ARU_02"], "site_id": ["S1", "S1"]}).to_csv(p, index=False)
+    pd.DataFrame(
+        {"aru_id": ["ARU_01", "ARU_02"], "site_id": ["S1", "S1"]}
+    ).to_csv(p, index=False)
     assert load_site_map(p) == {"ARU_01": "S1", "ARU_02": "S1"}
 
 
@@ -42,7 +44,14 @@ def test_attach_site_fallback_to_aru() -> None:
 
 def test_site_split_no_site_in_two_splits() -> None:
     arus = ["ARU_01", "ARU_02", "ARU_03", "ARU_04", "ARU_05", "ARU_06"]
-    smap = {"ARU_01": "S1", "ARU_02": "S1", "ARU_03": "S2", "ARU_04": "S2", "ARU_05": "S3", "ARU_06": "S3"}
+    smap = {
+        "ARU_01": "S1",
+        "ARU_02": "S1",
+        "ARU_03": "S2",
+        "ARU_04": "S2",
+        "ARU_05": "S3",
+        "ARU_06": "S3",
+    }
     table = attach_site(_table(arus), smap)
     cfg = SedTrainConfig(val_fraction=0.34, test_fraction=0.34, seed=0)
     split = site_split(table, cfg)

@@ -7,12 +7,21 @@ import sys
 from pathlib import Path
 
 from turkey_audio_detection.adjudication import adjudicate_to_csv
-from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig, SedInferConfig, SedTrainConfig
+from turkey_audio_detection.config import (
+    BirdNetConfig,
+    ClipConfig,
+    IndexConfig,
+    SedInferConfig,
+    SedTrainConfig,
+)
 from turkey_audio_detection.layout import RunLayout, validate_project_layout
-from turkey_audio_detection.manifest import build_stage_manifest, make_run_id, write_manifest
+from turkey_audio_detection.manifest import (
+    build_stage_manifest,
+    make_run_id,
+    write_manifest,
+)
 from turkey_audio_detection.stages import (
     stage_cache_spectrograms,
-    stage_config_snapshot,
     stage_extract_clips,
     stage_index_data,
     stage_run_birdnet,
@@ -23,7 +32,9 @@ def _print(msg: str) -> None:
     print(msg, file=sys.stdout)
 
 
-def _prepare_layout(project_root: Path, run_id: str) -> tuple[RunLayout, list[Path]]:
+def _prepare_layout(
+    project_root: Path, run_id: str
+) -> tuple[RunLayout, list[Path]]:
     aru_dirs = validate_project_layout(project_root)
     layout = RunLayout.from_project_root(project_root, run_id)
     layout.ensure_dirs()
@@ -54,13 +65,17 @@ def _cmd_index_data(args: argparse.Namespace) -> int:
             config_snapshot={"index": cfg.model_dump(mode="json")},
             stage_outputs={
                 "file_index_csv": str(layout.index_dir / "file_index.csv"),
-                "quarantine_csv": str(layout.index_dir / "quarantine_filenames.csv"),
+                "quarantine_csv": str(
+                    layout.index_dir / "quarantine_filenames.csv"
+                ),
             },
             status="completed",
             input_file_count=int(len(index_df) + len(quarantine_df)),
         )
         manifest["aru_folder_count"] = len(aru_dirs)
-        write_manifest(layout.manifests_dir / "index_data_manifest.json", manifest)
+        write_manifest(
+            layout.manifests_dir / "index_data_manifest.json", manifest
+        )
 
         _print(
             f"index-data completed for {project_root} | run_id={run_id} | "
@@ -88,15 +103,21 @@ def _cmd_run_birdnet(args: argparse.Namespace) -> int:
         project_root=project_root,
         config_snapshot={"birdnet": cfg.model_dump(mode="json")},
         stage_outputs={
-            "detections_csv": str(layout.birdnet_dir / "detections_normalized.csv"),
+            "detections_csv": str(
+                layout.birdnet_dir / "detections_normalized.csv"
+            ),
         },
         status="completed",
         input_file_count=int(len(out_df)),
         birdnet_version="birdnetlib",
     )
-    write_manifest(layout.manifests_dir / "run_birdnet_manifest.json", manifest)
+    write_manifest(
+        layout.manifests_dir / "run_birdnet_manifest.json", manifest
+    )
 
-    _print(f"run-birdnet completed for {project_root} | run_id={run_id} | detections={len(out_df)}")
+    _print(
+        f"run-birdnet completed for {project_root} | run_id={run_id} | detections={len(out_df)}"
+    )
     return 0
 
 
@@ -123,12 +144,21 @@ def _cmd_extract_clips(args: argparse.Namespace) -> int:
         status="completed",
         input_file_count=int(len(queue_df)),
     )
-    write_manifest(layout.manifests_dir / "extract_clips_manifest.json", manifest)
+    write_manifest(
+        layout.manifests_dir / "extract_clips_manifest.json", manifest
+    )
 
-    _print(f"extract-clips completed for {project_root} | run_id={run_id} | queue_items={len(queue_df)}")
+    _print(
+        f"extract-clips completed for {project_root} | run_id={run_id} | queue_items={len(queue_df)}"
+    )
 
-    if not getattr(args, "skip_spectrogram_cache", False) and not queue_df.empty:
-        _print(f"caching spectrograms for {project_root} | run_id={run_id} ...")
+    if (
+        not getattr(args, "skip_spectrogram_cache", False)
+        and not queue_df.empty
+    ):
+        _print(
+            f"caching spectrograms for {project_root} | run_id={run_id} ..."
+        )
         summary = stage_cache_spectrograms(layout)
         _print(
             f"cache-spectrograms completed | rendered={summary['rendered']} "
@@ -154,7 +184,11 @@ def _cmd_adjudicate(args: argparse.Namespace) -> int:
     project_root = Path(args.project_root).resolve()
     layout, _aru_dirs = _prepare_layout(project_root, run_id)
 
-    labels_dir = layout.review_labels_dir if args.labels_dir is None else Path(args.labels_dir).resolve()
+    labels_dir = (
+        layout.review_labels_dir
+        if args.labels_dir is None
+        else Path(args.labels_dir).resolve()
+    )
     kappa_out = layout.review_adjudication_dir / "kappa_summary.csv"
     disagreements_out = layout.review_adjudication_dir / "disagreements.csv"
 
@@ -256,7 +290,10 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     import torch
 
     from turkey_audio_detection.config import SedTrainConfig
-    from turkey_audio_detection.evaluation import evaluate_table, evaluation_to_rows
+    from turkey_audio_detection.evaluation import (
+        evaluate_table,
+        evaluation_to_rows,
+    )
     from turkey_audio_detection.layout import model_dir
     from turkey_audio_detection.sed_inference import load_sed_model
     from turkey_audio_detection.sed_training import site_split
@@ -264,25 +301,43 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     from turkey_audio_detection.training_labels import build_training_table
 
     project_root = Path(args.project_root).resolve()
-    table = build_training_table(project_root, list(args.run_id), include_non_consensus=args.include_non_consensus)
-    split_cfg = SedTrainConfig(
-        site_map_path=args.site_map_path, val_fraction=args.val_fraction,
-        test_fraction=args.test_fraction, seed=args.seed,
+    table = build_training_table(
+        project_root,
+        list(args.run_id),
+        include_non_consensus=args.include_non_consensus,
     )
-    table = site_split(attach_site(table, load_site_map(project_root / args.site_map_path)), split_cfg)
+    split_cfg = SedTrainConfig(
+        site_map_path=args.site_map_path,
+        val_fraction=args.val_fraction,
+        test_fraction=args.test_fraction,
+        seed=args.seed,
+    )
+    table = site_split(
+        attach_site(table, load_site_map(project_root / args.site_map_path)),
+        split_cfg,
+    )
     test_df = table[table["split"] == "test"].reset_index(drop=True)
     if test_df.empty:
         _print("evaluate: test split is empty")
         return 1
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, payload = load_sed_model(model_dir(project_root, args.model_id) / "checkpoint.pt", device)
+    model, payload = load_sed_model(
+        model_dir(project_root, args.model_id) / "checkpoint.pt", device
+    )
     result = evaluate_table(
-        model, test_df, payload, device,
-        iou_thresholds=tuple(args.iou_thresholds), seg_s=args.seg_s, clip_duration_s=args.clip_duration,
+        model,
+        test_df,
+        payload,
+        device,
+        iou_thresholds=tuple(args.iou_thresholds),
+        seg_s=args.seg_s,
+        clip_duration_s=args.clip_duration,
     )
     out = model_dir(project_root, args.model_id) / "eval.csv"
     evaluation_to_rows(result).to_csv(out, index=False)
-    _print(f"evaluate completed | model_id={args.model_id} | n_test={len(test_df)} | wrote {out}")
+    _print(
+        f"evaluate completed | model_id={args.model_id} | n_test={len(test_df)} | wrote {out}"
+    )
     return 0
 
 
@@ -292,13 +347,28 @@ def _cmd_hpo(args: argparse.Namespace) -> int:
     from turkey_audio_detection.training_labels import build_training_table
 
     project_root = Path(args.project_root).resolve()
-    table = build_training_table(project_root, list(args.run_id), include_non_consensus=args.include_non_consensus)
-    base = SedTrainConfig(
-        run_ids=list(args.run_id), site_map_path=args.site_map_path,
-        num_workers=args.num_workers, seed=args.seed,
+    table = build_training_table(
+        project_root,
+        list(args.run_id),
+        include_non_consensus=args.include_non_consensus,
     )
-    study = run_hpo(table, project_root, base, n_trials=args.n_trials, storage=args.storage, study_name=args.study_name)
-    _print(f"hpo completed | trials={len(study.trials)} | best_value={study.best_value:.3f} | best_params={study.best_params}")
+    base = SedTrainConfig(
+        run_ids=list(args.run_id),
+        site_map_path=args.site_map_path,
+        num_workers=args.num_workers,
+        seed=args.seed,
+    )
+    study = run_hpo(
+        table,
+        project_root,
+        base,
+        n_trials=args.n_trials,
+        storage=args.storage,
+        study_name=args.study_name,
+    )
+    _print(
+        f"hpo completed | trials={len(study.trials)} | best_value={study.best_value:.3f} | best_params={study.best_params}"
+    )
     return 0
 
 
@@ -345,7 +415,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="turkey-pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_index = sub.add_parser("index-data", help="Discover and index ARU recordings")
+    p_index = sub.add_parser(
+        "index-data", help="Discover and index ARU recordings"
+    )
     p_index.add_argument("--project-root", action="append", required=True)
     p_index.add_argument("--run-id", required=False)
     p_index.add_argument("--deployment-start", default="2026-03-01")
@@ -357,7 +429,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_index.add_argument("--wav-glob", default="*.wav")
     p_index.set_defaults(func=_cmd_index_data)
 
-    p_birdnet = sub.add_parser("run-birdnet", help="Run BirdNET and write detections")
+    p_birdnet = sub.add_parser(
+        "run-birdnet", help="Run BirdNET and write detections"
+    )
     p_birdnet.add_argument("--project-root", required=True)
     p_birdnet.add_argument("--run-id", required=False)
     p_birdnet.add_argument("--min-confidence", type=float, default=0.1)
@@ -366,13 +440,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_birdnet.add_argument("--longitude", type=float, default=-71.5)
     p_birdnet.set_defaults(func=_cmd_run_birdnet)
 
-    p_clips = sub.add_parser("extract-clips", help="Create review clips from detections")
+    p_clips = sub.add_parser(
+        "extract-clips", help="Create review clips from detections"
+    )
     p_clips.add_argument("--project-root", required=True)
     p_clips.add_argument("--run-id", required=False)
     p_clips.add_argument("--clip-duration", type=float, default=3.0)
     p_clips.add_argument("--species-match", default="Wild Turkey")
-    p_clips.add_argument("--skip-spectrogram-cache", action="store_true",
-                         help="Skip pre-rendering review spectrograms (review app will compute on demand)")
+    p_clips.add_argument(
+        "--skip-spectrogram-cache",
+        action="store_true",
+        help="Skip pre-rendering review spectrograms (review app will compute on demand)",
+    )
     p_clips.set_defaults(func=_cmd_extract_clips)
 
     p_cache = sub.add_parser(
@@ -381,18 +460,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_cache.add_argument("--project-root", required=True)
     p_cache.add_argument("--run-id", required=True)
-    p_cache.add_argument("--force", action="store_true",
-                         help="Re-render every PNG even if one already exists")
+    p_cache.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-render every PNG even if one already exists",
+    )
     p_cache.set_defaults(func=_cmd_cache_spectrograms)
 
-    p_adjudicate = sub.add_parser("adjudicate", help="Compute inter-rater agreement")
+    p_adjudicate = sub.add_parser(
+        "adjudicate", help="Compute inter-rater agreement"
+    )
     p_adjudicate.add_argument("--project-root", required=True)
     p_adjudicate.add_argument("--run-id", required=False)
     p_adjudicate.add_argument("--labels-dir", required=False)
     p_adjudicate.add_argument("--include-unsure", action="store_true")
     p_adjudicate.set_defaults(func=_cmd_adjudicate)
 
-    p_run_all = sub.add_parser("run-all", help="Run index -> BirdNET -> clip extraction")
+    p_run_all = sub.add_parser(
+        "run-all", help="Run index -> BirdNET -> clip extraction"
+    )
     p_run_all.add_argument("--project-root", required=True)
     p_run_all.add_argument("--run-id", required=False)
     p_run_all.add_argument("--deployment-start", default="2026-03-01")
@@ -406,14 +492,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_run_all.add_argument("--prime-window-only", action="store_true")
     p_run_all.add_argument("--clip-duration", type=float, default=3.0)
     p_run_all.add_argument("--species-match", default="Wild Turkey")
-    p_run_all.add_argument("--skip-spectrogram-cache", action="store_true",
-                           help="Skip pre-rendering review spectrograms")
+    p_run_all.add_argument(
+        "--skip-spectrogram-cache",
+        action="store_true",
+        help="Skip pre-rendering review spectrograms",
+    )
     p_run_all.set_defaults(func=_cmd_run_all)
 
-    p_train = sub.add_parser("train", help="Train the frame-level SED model on reviewed labels")
+    p_train = sub.add_parser(
+        "train", help="Train the frame-level SED model on reviewed labels"
+    )
     p_train.add_argument("--project-root", required=True)
-    p_train.add_argument("--run-id", action="append", required=True,
-                         help="One or more run IDs whose review queue + labels feed training")
+    p_train.add_argument(
+        "--run-id",
+        action="append",
+        required=True,
+        help="One or more run IDs whose review queue + labels feed training",
+    )
     p_train.add_argument("--model-id")
     p_train.add_argument("--clip-duration", type=float, default=3.0)
     p_train.add_argument("--site-map-path", default="data/site_map.csv")
@@ -422,7 +517,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--include-non-consensus", action="store_true")
     p_train.add_argument("--no-pretrained", action="store_true")
     p_train.add_argument("--n-stages", type=int, default=2)
-    p_train.add_argument("--temporal", choices=["bigru", "tcn"], default="bigru")
+    p_train.add_argument(
+        "--temporal", choices=["bigru", "tcn"], default="bigru"
+    )
     p_train.add_argument("--hidden-size", type=int, default=256)
     p_train.add_argument("--n-layers", type=int, default=2)
     p_train.add_argument("--dropout", type=float, default=0.2)
@@ -440,7 +537,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--seed", type=int, default=42)
     p_train.set_defaults(func=_cmd_train)
 
-    p_classify = sub.add_parser("classify", help="Run the trained SED model over full recordings")
+    p_classify = sub.add_parser(
+        "classify", help="Run the trained SED model over full recordings"
+    )
     p_classify.add_argument("--project-root", required=True)
     p_classify.add_argument("--model-id", required=True)
     p_classify.add_argument("--audio-glob", default="data/ARU_*/**/*.wav")
@@ -453,7 +552,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_classify.add_argument("--site-map-path", default="data/site_map.csv")
     p_classify.set_defaults(func=_cmd_classify)
 
-    p_eval = sub.add_parser("evaluate", help="Event-level + segment evaluation on the test split")
+    p_eval = sub.add_parser(
+        "evaluate", help="Event-level + segment evaluation on the test split"
+    )
     p_eval.add_argument("--project-root", required=True)
     p_eval.add_argument("--model-id", required=True)
     p_eval.add_argument("--run-id", action="append", required=True)
@@ -461,13 +562,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--site-map-path", default="data/site_map.csv")
     p_eval.add_argument("--val-fraction", type=float, default=0.15)
     p_eval.add_argument("--test-fraction", type=float, default=0.15)
-    p_eval.add_argument("--iou-thresholds", type=float, nargs="+", default=[0.1, 0.3, 0.5])
+    p_eval.add_argument(
+        "--iou-thresholds", type=float, nargs="+", default=[0.1, 0.3, 0.5]
+    )
     p_eval.add_argument("--seg-s", type=float, default=1.0)
     p_eval.add_argument("--clip-duration", type=float, default=3.0)
     p_eval.add_argument("--seed", type=int, default=42)
     p_eval.set_defaults(func=_cmd_evaluate)
 
-    p_hpo = sub.add_parser("hpo", help="Optuna hyperparameter search for the SED model")
+    p_hpo = sub.add_parser(
+        "hpo", help="Optuna hyperparameter search for the SED model"
+    )
     p_hpo.add_argument("--project-root", required=True)
     p_hpo.add_argument("--run-id", action="append", required=True)
     p_hpo.add_argument("--include-non-consensus", action="store_true")

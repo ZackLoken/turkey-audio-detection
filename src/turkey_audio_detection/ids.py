@@ -31,7 +31,9 @@ def make_detection_id(
     )
 
 
-def make_item_id(detection_id: str, clip_start_s: float, clip_end_s: float) -> str:
+def make_item_id(
+    detection_id: str, clip_start_s: float, clip_end_s: float
+) -> str:
     """Create a stable queue item ID for one review clip."""
     return "itm_" + _digest(
         [

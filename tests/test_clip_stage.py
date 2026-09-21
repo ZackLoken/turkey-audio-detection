@@ -40,7 +40,9 @@ def test_stage_extract_clips_builds_queue(tmp_path: Path) -> None:
             }
         ]
     )
-    detections.to_csv(layout.birdnet_dir / "detections_normalized.csv", index=False)
+    detections.to_csv(
+        layout.birdnet_dir / "detections_normalized.csv", index=False
+    )
 
     queue_df = stage_extract_clips(layout, ClipConfig())
 

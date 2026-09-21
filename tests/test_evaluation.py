@@ -35,7 +35,9 @@ def test_match_events_tp_fp_fn() -> None:
 
 
 def test_match_events_below_threshold_is_no_match() -> None:
-    m = match_events([(0.0, 10.0)], [(9.0, 19.0)], iou_threshold=0.5)  # iou ~ 1/19
+    m = match_events(
+        [(0.0, 10.0)], [(9.0, 19.0)], iou_threshold=0.5
+    )  # iou ~ 1/19
     assert m == {"tp": 0, "fp": 1, "fn": 1}
 
 
@@ -45,7 +47,10 @@ def test_prf() -> None:
 
 
 def test_segment_f1() -> None:
-    assert segment_f1([(0.0, 2.0)], [(0.0, 2.0)], duration_s=4.0, seg_s=1.0) == 1.0
+    assert (
+        segment_f1([(0.0, 2.0)], [(0.0, 2.0)], duration_s=4.0, seg_s=1.0)
+        == 1.0
+    )
     assert segment_f1([(0.0, 2.0)], [], duration_s=4.0, seg_s=1.0) == 0.0
 
 
@@ -53,7 +58,11 @@ def test_regions_to_events() -> None:
     regions = [
         {"label": "Tom", "start_s": 1.0, "end_s": 2.0},
         {"label": "Hen", "start_s": 0.5, "end_s": 0.8},
-        {"label": "Tom", "start_s": 3.0, "end_s": 3.0},  # zero-length -> dropped
+        {
+            "label": "Tom",
+            "start_s": 3.0,
+            "end_s": 3.0,
+        },  # zero-length -> dropped
     ]
     assert regions_to_events(regions, "Tom") == [(1.0, 2.0)]
     assert regions_to_events(regions, "Hen") == [(0.5, 0.8)]
@@ -64,18 +73,33 @@ def test_evaluate_table_structure(tmp_path) -> None:
     rng = np.random.default_rng(0)
     rows = []
     for i in range(2):
-        wav = (0.1 * rng.standard_normal(mel.sample_rate * 3)).astype(np.float32)
+        wav = (0.1 * rng.standard_normal(mel.sample_rate * 3)).astype(
+            np.float32
+        )
         cp = tmp_path / f"c{i}.wav"
         sf.write(str(cp), wav, mel.sample_rate)
         regions = json.dumps([{"label": "Tom", "start_s": 1.0, "end_s": 2.0}])
-        rows.append({"item_id": f"it{i}", "clip_path": str(cp), "regions_json": regions})
+        rows.append(
+            {
+                "item_id": f"it{i}",
+                "clip_path": str(cp),
+                "regions_json": regions,
+            }
+        )
     table = pd.DataFrame(rows)
 
-    model = FrameSed(n_classes=2, n_stages=2, hidden_size=16, n_layers=1, pretrained=False)
+    model = FrameSed(
+        n_classes=2, n_stages=2, hidden_size=16, n_layers=1, pretrained=False
+    )
     payload = {"time_downsample": 8, "thresholds": {"Tom": 0.0, "Hen": 0.0}}
     result = evaluate_table(
-        model, table, payload, torch.device("cpu"), mel=mel,
-        iou_thresholds=(0.1, 0.3), seg_s=1.0,
+        model,
+        table,
+        payload,
+        torch.device("cpu"),
+        mel=mel,
+        iou_thresholds=(0.1, 0.3),
+        seg_s=1.0,
     )
     assert set(result["event"].keys()) == {0.1, 0.3}
     for iou in (0.1, 0.3):

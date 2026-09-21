@@ -32,17 +32,25 @@ class ConvNextBackbone(nn.Module):
         elif config_dict is not None:
             # Rebuild the exact architecture used at training (random weights, no
             # download) so a fine-tuned state_dict loads cleanly at inference time.
-            model = ConvNextForImageClassification(ConvNextConfig.from_dict(config_dict))
+            model = ConvNextForImageClassification(
+                ConvNextConfig.from_dict(config_dict)
+            )
         else:
-            model = ConvNextForImageClassification(ConvNextConfig(num_channels=1))
+            model = ConvNextForImageClassification(
+                ConvNextConfig(num_channels=1)
+            )
 
         cfg = model.config
-        self.convnext_config = cfg.to_dict()  # persisted in checkpoints for faithful reload
+        self.convnext_config = (
+            cfg.to_dict()
+        )  # persisted in checkpoints for faithful reload
         all_stages = list(model.convnext.encoder.stages)
         n_stages = max(1, min(int(n_stages), len(all_stages)))
         self.n_stages = n_stages
         self.embeddings = model.convnext.embeddings
-        self.stages = nn.ModuleList(all_stages[:n_stages])  # drop deeper stages
+        self.stages = nn.ModuleList(
+            all_stages[:n_stages]
+        )  # drop deeper stages
         self.out_channels = int(cfg.hidden_sizes[n_stages - 1])
         # 4x patchify stem, then 2x at the start of each stage after the first.
         self.time_downsample = 4 * (2 ** (n_stages - 1))

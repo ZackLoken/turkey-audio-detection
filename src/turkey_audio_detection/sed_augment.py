@@ -25,14 +25,22 @@ class SpecAugment:
     n_time_masks: int = 2
     freq_mask_width: int = 12
     n_freq_masks: int = 2
-    fill_value: float | None = None  # None -> per-call minimum (treat masked as silence)
+    fill_value: float | None = (
+        None  # None -> per-call minimum (treat masked as silence)
+    )
     rng: np.random.Generator = field(default_factory=np.random.default_rng)
 
-    def __call__(self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray):
+    def __call__(
+        self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray
+    ):
         n_mels, n_frames = log_mel.shape
         out = log_mel.copy()
         tgt = target.copy()
-        fill = float(out.min()) if self.fill_value is None else float(self.fill_value)
+        fill = (
+            float(out.min())
+            if self.fill_value is None
+            else float(self.fill_value)
+        )
         rng = self.rng
 
         for _ in range(self.n_time_masks):
@@ -41,14 +49,18 @@ class SpecAugment:
                 continue
             start = int(rng.integers(0, n_frames - width))
             out[:, start : start + width] = fill
-            tgt[:, start : start + width] = 0.0  # supervision removed where masked
+            tgt[:, start : start + width] = (
+                0.0  # supervision removed where masked
+            )
 
         for _ in range(self.n_freq_masks):
             width = int(rng.integers(0, self.freq_mask_width + 1))
             if width == 0 or width >= n_mels:
                 continue
             start = int(rng.integers(0, n_mels - width))
-            out[start : start + width, :] = fill  # target has no frequency axis
+            out[start : start + width, :] = (
+                fill  # target has no frequency axis
+            )
 
         return out, tgt, weak
 
@@ -63,10 +75,14 @@ class Mixup:
     def __post_init__(self) -> None:
         self._partner: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
 
-    def set_partner(self, partner: tuple[np.ndarray, np.ndarray, np.ndarray] | None) -> None:
+    def set_partner(
+        self, partner: tuple[np.ndarray, np.ndarray, np.ndarray] | None
+    ) -> None:
         self._partner = partner
 
-    def __call__(self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray):
+    def __call__(
+        self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray
+    ):
         if self._partner is None or self.alpha <= 0:
             return log_mel, target, weak
         p_mel, p_tgt, p_weak = self._partner
@@ -75,7 +91,9 @@ class Mixup:
         lam = float(self.rng.beta(self.alpha, self.alpha))
         a_lin = np.power(10.0, log_mel / 10.0)
         b_lin = np.power(10.0, p_mel / 10.0)
-        out = 10.0 * np.log10(np.maximum(lam * a_lin + (1.0 - lam) * b_lin, _AMIN))
+        out = 10.0 * np.log10(
+            np.maximum(lam * a_lin + (1.0 - lam) * b_lin, _AMIN)
+        )
         # Targets/weak are unions so supervision stays a valid {0,1} presence label.
         return (
             out.astype(np.float32),
@@ -97,7 +115,9 @@ class BackgroundMix:
     def set_background(self, background_log_mel: np.ndarray | None) -> None:
         self._background = background_log_mel
 
-    def __call__(self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray):
+    def __call__(
+        self, log_mel: np.ndarray, target: np.ndarray, weak: np.ndarray
+    ):
         if self._background is None or self._background.shape != log_mel.shape:
             return log_mel, target, weak
         snr_db = float(self.rng.uniform(*self.snr_db_range))

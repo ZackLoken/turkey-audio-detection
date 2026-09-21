@@ -14,7 +14,6 @@ import librosa.display
 import matplotlib.pyplot as plt
 from PIL import Image
 
-
 # Spectrogram band shown in the reviewer canvas.
 # 50 Hz – 14 kHz covers the full audible range birds use (Wild Turkey calls dominate
 # 150–3000 Hz; songbirds + insects sit 4–10 kHz). Matches PANNs CNN14's training band,
@@ -40,7 +39,9 @@ DATA_TOP_FRAC = 1.0
 _BG = "#0e1117"  # matches Streamlit dark theme background
 
 
-def data_area_bounds(canvas_w: int, canvas_h: int) -> tuple[float, float, float, float]:
+def data_area_bounds(
+    canvas_w: int, canvas_h: int
+) -> tuple[float, float, float, float]:
     """Pixel bounds (left, top, right, bottom) of the spectrogram data area inside
     a (canvas_w, canvas_h) image. Anything outside this area is axis chrome."""
     return (
@@ -76,13 +77,17 @@ def render_canvas_spectrogram(
     db = librosa.power_to_db(melspec, ref=max(1e-6, float(melspec.max())))
 
     dpi = 100
-    fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi, facecolor=_BG)
-    ax = fig.add_axes((
-        DATA_LEFT_FRAC,
-        DATA_BOTTOM_FRAC,
-        DATA_RIGHT_FRAC - DATA_LEFT_FRAC,
-        DATA_TOP_FRAC - DATA_BOTTOM_FRAC,
-    ))
+    fig = plt.figure(
+        figsize=(width_px / dpi, height_px / dpi), dpi=dpi, facecolor=_BG
+    )
+    ax = fig.add_axes(
+        (
+            DATA_LEFT_FRAC,
+            DATA_BOTTOM_FRAC,
+            DATA_RIGHT_FRAC - DATA_LEFT_FRAC,
+            DATA_TOP_FRAC - DATA_BOTTOM_FRAC,
+        )
+    )
     ax.set_facecolor(_BG)
     librosa.display.specshow(
         db,

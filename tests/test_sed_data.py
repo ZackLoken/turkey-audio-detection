@@ -8,7 +8,11 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 
-from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES, parse_regions
+from turkey_audio_detection.dataset import (
+    CLASS_INDEX,
+    N_CLASSES,
+    parse_regions,
+)
 from turkey_audio_detection.sed_data import (
     FrameSedDataset,
     LogMelExtractor,
@@ -22,7 +26,9 @@ P = SedMelParams()
 
 
 def test_parse_regions_valid_and_invalid() -> None:
-    parsed = parse_regions(json.dumps([{"start_s": 1.0, "end_s": 2.0, "label": "Tom"}]))
+    parsed = parse_regions(
+        json.dumps([{"start_s": 1.0, "end_s": 2.0, "label": "Tom"}])
+    )
     assert parsed == [{"start_s": 1.0, "end_s": 2.0, "label": "Tom"}]
     assert parse_regions(None) == []
     assert parse_regions("") == []
@@ -33,7 +39,13 @@ def test_parse_regions_valid_and_invalid() -> None:
 
 
 def test_regions_to_frame_targets_single_tom() -> None:
-    region = {"start_s": 1.0, "end_s": 2.0, "freq_min_hz": 300.0, "freq_max_hz": 1500.0, "label": "Tom"}
+    region = {
+        "start_s": 1.0,
+        "end_s": 2.0,
+        "freq_min_hz": 300.0,
+        "freq_max_hz": 1500.0,
+        "label": "Tom",
+    }
     target = regions_to_frame_targets([region], n_frames=300, p=P)
     assert target.shape == (N_CLASSES, 300)
     # 1.0 s -> frame 100, 2.0 s -> frame 200 (32000/320 = 100 frames/s).
@@ -100,15 +112,25 @@ def test_frame_sed_dataset_getitem(tmp_path) -> None:
     clip_path = tmp_path / "clip.wav"
     sf.write(str(clip_path), wav, P.sample_rate)
 
-    regions = [{"start_s": 1.0, "end_s": 2.0, "freq_min_hz": 300.0, "freq_max_hz": 1500.0, "label": "Tom"}]
+    regions = [
+        {
+            "start_s": 1.0,
+            "end_s": 2.0,
+            "freq_min_hz": 300.0,
+            "freq_max_hz": 1500.0,
+            "label": "Tom",
+        }
+    ]
     table = pd.DataFrame(
-        [{
-            "item_id": "it_1",
-            "clip_path": str(clip_path),
-            "regions_json": json.dumps(regions),
-            "tom_present": 1,
-            "hen_present": 0,
-        }]
+        [
+            {
+                "item_id": "it_1",
+                "clip_path": str(clip_path),
+                "regions_json": json.dumps(regions),
+                "tom_present": 1,
+                "hen_present": 0,
+            }
+        ]
     )
     ds = FrameSedDataset(table, clip_duration_s=3.0, mel=P)
     log_mel, target, weak, item_id = ds[0]

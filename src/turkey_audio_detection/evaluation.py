@@ -9,14 +9,22 @@ sweep so the operating point isn't hidden.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
 
-from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES, parse_regions
-from turkey_audio_detection.sed_data import LogMelExtractor, SedMelParams, load_waveform, normalize_log_mel
+from turkey_audio_detection.dataset import (
+    CLASS_INDEX,
+    N_CLASSES,
+    parse_regions,
+)
+from turkey_audio_detection.sed_data import (
+    LogMelExtractor,
+    SedMelParams,
+    load_waveform,
+    normalize_log_mel,
+)
 from turkey_audio_detection.sed_inference import frames_to_events
 
 _INDEX_TO_CLASS = {v: k for k, v in CLASS_INDEX.items()}
@@ -29,7 +37,9 @@ def time_iou(a0: float, a1: float, b0: float, b1: float) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def match_events(gt: list[Event], pred: list[Event], iou_threshold: float = 0.3) -> dict:
+def match_events(
+    gt: list[Event], pred: list[Event], iou_threshold: float = 0.3
+) -> dict:
     """Greedy descending-IoU matching -> {tp, fp, fn}. One GT matches one prediction."""
     candidates: list[tuple[float, int, int]] = []
     for gi, (g0, g1) in enumerate(gt):
@@ -52,11 +62,17 @@ def match_events(gt: list[Event], pred: list[Event], iou_threshold: float = 0.3)
 def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
     return precision, recall, f1
 
 
-def segment_f1(gt: list[Event], pred: list[Event], duration_s: float, seg_s: float = 1.0) -> float:
+def segment_f1(
+    gt: list[Event], pred: list[Event], duration_s: float, seg_s: float = 1.0
+) -> float:
     """F1 over fixed time bins: a bin is positive if any event overlaps it."""
     n = max(1, int(math.ceil(duration_s / seg_s)))
     gt_seg = np.zeros(n, dtype=bool)
@@ -100,24 +116,48 @@ def evaluate_table(
 ) -> dict:
     """Run the model over a labeled table; return event metrics (IoU sweep) + segment F1."""
     extractor = LogMelExtractor(mel)
-    hop_s = (mel.hop_length * int(payload.get("time_downsample", 8))) / mel.sample_rate
+    hop_s = (
+        mel.hop_length * int(payload.get("time_downsample", 8))
+    ) / mel.sample_rate
     thr = thresholds or payload.get("thresholds", {}) or {}
 
     # accumulate per-class events for event metrics, and segment tallies
-    counts = {iou: {c: {"tp": 0, "fp": 0, "fn": 0} for c in range(N_CLASSES)} for iou in iou_thresholds}
+    counts = {
+        iou: {c: {"tp": 0, "fp": 0, "fn": 0} for c in range(N_CLASSES)}
+        for iou in iou_thresholds
+    }
     seg_scores = {c: [] for c in range(N_CLASSES)}
 
     model.eval()
     for _, row in table.iterrows():
-        y = load_waveform(str(row["clip_path"]), clip_duration_s, mel.sample_rate)
-        log_mel = normalize_log_mel(extractor(torch.from_numpy(y)).numpy(), mel)
+        y = load_waveform(
+            str(row["clip_path"]), clip_duration_s, mel.sample_rate
+        )
+        log_mel = normalize_log_mel(
+            extractor(torch.from_numpy(y)).numpy(), mel
+        )
         with torch.no_grad():
-            probs = torch.sigmoid(model(torch.from_numpy(log_mel)[None].to(device)))[0].cpu().numpy()
+            probs = (
+                torch.sigmoid(
+                    model(torch.from_numpy(log_mel)[None].to(device))
+                )[0]
+                .cpu()
+                .numpy()
+            )
         regions = parse_regions(row.get("regions_json", ""))
         for c in range(N_CLASSES):
             label = _INDEX_TO_CLASS[c]
             gt = regions_to_events(regions, label)
-            pred = [(e["start_s"], e["end_s"]) for e in frames_to_events(probs[c], float(thr.get(label, 0.5)), min_event_duration_s, merge_gap_s, hop_s)]
+            pred = [
+                (e["start_s"], e["end_s"])
+                for e in frames_to_events(
+                    probs[c],
+                    float(thr.get(label, 0.5)),
+                    min_event_duration_s,
+                    merge_gap_s,
+                    hop_s,
+                )
+            ]
             for iou in iou_thresholds:
                 m = match_events(gt, pred, iou)
                 for k in ("tp", "fp", "fn"):
@@ -129,10 +169,16 @@ def evaluate_table(
         result["event"][iou] = {}
         for c in range(N_CLASSES):
             p, r, f = prf(**counts[iou][c])
-            result["event"][iou][_INDEX_TO_CLASS[c]] = {"precision": p, "recall": r, "f1": f}
+            result["event"][iou][_INDEX_TO_CLASS[c]] = {
+                "precision": p,
+                "recall": r,
+                "f1": f,
+            }
     for c in range(N_CLASSES):
         vals = seg_scores[c]
-        result["segment_f1"][_INDEX_TO_CLASS[c]] = float(np.mean(vals)) if vals else 0.0
+        result["segment_f1"][_INDEX_TO_CLASS[c]] = (
+            float(np.mean(vals)) if vals else 0.0
+        )
     return result
 
 
@@ -141,7 +187,16 @@ def evaluation_to_rows(result: dict) -> pd.DataFrame:
     rows: list[dict] = []
     for iou, by_class in result.get("event", {}).items():
         for cls, m in by_class.items():
-            rows.append({"metric": "event", "iou_threshold": iou, "class": cls, **m})
+            rows.append(
+                {"metric": "event", "iou_threshold": iou, "class": cls, **m}
+            )
     for cls, f1 in result.get("segment_f1", {}).items():
-        rows.append({"metric": "segment_f1", "iou_threshold": None, "class": cls, "f1": f1})
+        rows.append(
+            {
+                "metric": "segment_f1",
+                "iou_threshold": None,
+                "class": cls,
+                "f1": f1,
+            }
+        )
     return pd.DataFrame(rows)

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
 import json
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
 import librosa
 import numpy as np
@@ -26,10 +26,11 @@ from turkey_audio_detection.spectrogram_render import (
     render_canvas_spectrogram,
 )
 
-
 # Custom canvas component — replaces the unmaintained streamlit-drawable-canvas which
 # fails to render background images under Streamlit 1.30+ even with monkey-patches.
-_CANVAS_COMPONENT_DIR = Path(__file__).resolve().parent / "components" / "canvas"
+_CANVAS_COMPONENT_DIR = (
+    Path(__file__).resolve().parent / "components" / "canvas"
+)
 _canvas_component = components.declare_component(
     "turkey_canvas", path=str(_CANVAS_COMPONENT_DIR)
 )
@@ -93,6 +94,7 @@ def turkey_canvas(
     )
     return result if isinstance(result, dict) else default_value
 
+
 DEFAULT_CLIP_DURATION_S = 3.0
 
 # Stroke colors chosen for maximum contrast against librosa's magma colormap
@@ -129,7 +131,9 @@ def _load_queue(project_root: Path, run_id: str) -> pd.DataFrame:
     if df.empty:
         return df
     if "confidence" in df.columns:
-        df = df.sort_values("confidence", ascending=False).reset_index(drop=True)
+        df = df.sort_values("confidence", ascending=False).reset_index(
+            drop=True
+        )
     elif "queue_order" in df.columns:
         df = df.sort_values("queue_order").reset_index(drop=True)
     return df
@@ -142,7 +146,9 @@ def _labels_path(project_root: Path, reviewer_id: str) -> Path:
     return out / f"{safe_reviewer}.csv"
 
 
-def _load_existing_labels(project_root: Path, reviewer_id: str) -> pd.DataFrame:
+def _load_existing_labels(
+    project_root: Path, reviewer_id: str
+) -> pd.DataFrame:
     path = _labels_path(project_root, reviewer_id)
     if not path.exists():
         return pd.DataFrame()
@@ -169,6 +175,7 @@ def _append_label_row(project_root: Path, row: dict) -> None:
     write_header = not path.exists()
     with path.open("a", encoding="utf-8", newline="") as f:
         import csv
+
         writer = csv.DictWriter(f, fieldnames=LABEL_COLUMNS)
         if write_header:
             writer.writeheader()
@@ -183,7 +190,9 @@ def _latest_by_item(labels_df: pd.DataFrame) -> pd.DataFrame:
     return labels_df.drop_duplicates(subset=["item_id"], keep="last")
 
 
-def _current_queue_index(queue_df: pd.DataFrame, labels_df: pd.DataFrame) -> int:
+def _current_queue_index(
+    queue_df: pd.DataFrame, labels_df: pd.DataFrame
+) -> int:
     if queue_df.empty:
         return 0
     if labels_df.empty or "item_id" not in labels_df.columns:
@@ -204,7 +213,9 @@ def _cached_spectrogram_path(clip_path: Path, item_id: str) -> Path:
     return clip_path.parent.parent / "spectrograms" / f"{item_id}.png"
 
 
-def _spectrogram_pil_for_clip(clip_path: Path, item_id: str) -> Image.Image | None:
+def _spectrogram_pil_for_clip(
+    clip_path: Path, item_id: str
+) -> Image.Image | None:
     """Return the clip's canvas-band spectrogram as a PIL image.
 
     Reads the pre-rendered PNG cache if present (fast). Falls back to live
@@ -253,13 +264,20 @@ _BG = "#0e1117"  # Streamlit dark background
 
 
 @st.cache_data(show_spinner=False)
-def _spectrogram_for_canvas(audio_path_str: str, width_px: int, height_px: int) -> Image.Image | None:
+def _spectrogram_for_canvas(
+    audio_path_str: str, width_px: int, height_px: int
+) -> Image.Image | None:
     """Streamlit-cached wrapper around the shared spectrogram renderer."""
     return render_canvas_spectrogram(audio_path_str, width_px, height_px)
 
 
-def pixel_y_to_hz(py: float, canvas_h: int, fmin_hz: float, fmax_hz: float,
-                  canvas_w: int = CANVAS_WIDTH) -> float:
+def pixel_y_to_hz(
+    py: float,
+    canvas_h: int,
+    fmin_hz: float,
+    fmax_hz: float,
+    canvas_w: int = CANVAS_WIDTH,
+) -> float:
     """Convert a canvas pixel-y to Hz on the mel scale, clipped to the data area.
 
     The spectrogram leaves a margin at the bottom (and a thin top margin in some
@@ -276,14 +294,23 @@ def pixel_y_to_hz(py: float, canvas_h: int, fmin_hz: float, fmax_hz: float,
     return float(librosa.mel_to_hz(mel))
 
 
-def hz_to_pixel_y(hz: float, canvas_h: int, fmin_hz: float, fmax_hz: float,
-                  canvas_w: int = CANVAS_WIDTH) -> float:
+def hz_to_pixel_y(
+    hz: float,
+    canvas_h: int,
+    fmin_hz: float,
+    fmax_hz: float,
+    canvas_w: int = CANVAS_WIDTH,
+) -> float:
     """Inverse of pixel_y_to_hz — returns a pixel-y inside the data area."""
     _, data_top, _, data_bottom = data_area_bounds(canvas_w, canvas_h)
     mel_min = librosa.hz_to_mel(fmin_hz)
     mel_max = librosa.hz_to_mel(fmax_hz)
     mel_target = librosa.hz_to_mel(max(fmin_hz, min(fmax_hz, hz)))
-    frac = (mel_target - mel_min) / (mel_max - mel_min) if mel_max > mel_min else 0.0
+    frac = (
+        (mel_target - mel_min) / (mel_max - mel_min)
+        if mel_max > mel_min
+        else 0.0
+    )
     return float(data_top + (1.0 - frac) * (data_bottom - data_top))
 
 
@@ -311,7 +338,9 @@ def rect_to_region(
     if width <= 0 or height <= 0:
         return None
 
-    data_left, data_top, data_right, data_bottom = data_area_bounds(canvas_w, canvas_h)
+    data_left, data_top, data_right, data_bottom = data_area_bounds(
+        canvas_w, canvas_h
+    )
     rect_left = max(data_left, left)
     rect_right = min(data_right, left + width)
     rect_top = max(data_top, top)
@@ -320,8 +349,20 @@ def rect_to_region(
         return None
 
     data_w = data_right - data_left
-    start_s = max(0.0, min(clip_duration_s, ((rect_left - data_left) / data_w) * clip_duration_s))
-    end_s = max(0.0, min(clip_duration_s, ((rect_right - data_left) / data_w) * clip_duration_s))
+    start_s = max(
+        0.0,
+        min(
+            clip_duration_s,
+            ((rect_left - data_left) / data_w) * clip_duration_s,
+        ),
+    )
+    end_s = max(
+        0.0,
+        min(
+            clip_duration_s,
+            ((rect_right - data_left) / data_w) * clip_duration_s,
+        ),
+    )
     if end_s <= start_s:
         return None
 
@@ -329,8 +370,12 @@ def rect_to_region(
         freq_min_hz = float(fmin_hz)
         freq_max_hz = float(fmax_hz)
     else:
-        freq_min_hz = pixel_y_to_hz(rect_bottom, canvas_h, fmin_hz, fmax_hz, canvas_w)
-        freq_max_hz = pixel_y_to_hz(rect_top, canvas_h, fmin_hz, fmax_hz, canvas_w)
+        freq_min_hz = pixel_y_to_hz(
+            rect_bottom, canvas_h, fmin_hz, fmax_hz, canvas_w
+        )
+        freq_max_hz = pixel_y_to_hz(
+            rect_top, canvas_h, fmin_hz, fmax_hz, canvas_w
+        )
     if freq_max_hz <= freq_min_hz:
         return None
 
@@ -370,10 +415,16 @@ def region_to_rect(
     data_w = data_right - data_left
     left = data_left + (region["start_s"] / clip_duration_s) * data_w
     width = ((region["end_s"] - region["start_s"]) / clip_duration_s) * data_w
-    top = hz_to_pixel_y(region["freq_max_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w)
-    bottom = hz_to_pixel_y(region["freq_min_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w)
+    top = hz_to_pixel_y(
+        region["freq_max_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w
+    )
+    bottom = hz_to_pixel_y(
+        region["freq_min_hz"], canvas_h, fmin_hz, fmax_hz, canvas_w
+    )
     height = max(1.0, bottom - top)
-    stroke = STROKE_COLOR_TOM if region.get("label") == "Tom" else STROKE_COLOR_HEN
+    stroke = (
+        STROKE_COLOR_TOM if region.get("label") == "Tom" else STROKE_COLOR_HEN
+    )
     return {
         "type": "rect",
         "left": float(left),
@@ -457,13 +508,22 @@ def _launch_via_streamlit() -> None:
     # Invoke streamlit through the current Python interpreter rather than the
     # streamlit.exe wrapper so the launch works on managed Windows machines
     # where AV / AppLocker blocks unsigned .exe wrappers in conda envs.
-    args = [sys.executable, "-m", "streamlit", "run", str(script), "--server.headless", "false"]
+    args = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(script),
+        "--server.headless",
+        "false",
+    ]
     raise SystemExit(subprocess.call(args, env=env))
 
 
 def main() -> None:
     """Entry point: re-launches via streamlit when called as a console script."""
     import os
+
     # _TURKEY_STREAMLIT_CHILD is set by _launch_via_streamlit() so Streamlit
     # inherits it. If it's absent we're a plain Python process and must re-launch.
     if not os.environ.get("_TURKEY_STREAMLIT_CHILD"):
@@ -475,25 +535,37 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Session")
-        project_root_str = st.text_input("Project root", value=str(_default_project_root()))
+        project_root_str = st.text_input(
+            "Project root", value=str(_default_project_root())
+        )
         project_root = Path(project_root_str)
 
         run_candidates: list[str] = []
         runs_path = _runs_dir(project_root)
         if runs_path.exists():
-            run_candidates = sorted([p.name for p in runs_path.iterdir() if p.is_dir()], reverse=True)
+            run_candidates = sorted(
+                [p.name for p in runs_path.iterdir() if p.is_dir()],
+                reverse=True,
+            )
 
         if run_candidates:
             selected_run = st.selectbox("Run ID", options=run_candidates)
         else:
             selected_run = st.text_input("Run ID", value="")
 
-        reviewer_id = st.text_input("Reviewer Name", value=st.session_state.get("reviewer_id", "")) or ""
+        reviewer_id = (
+            st.text_input(
+                "Reviewer Name", value=st.session_state.get("reviewer_id", "")
+            )
+            or ""
+        )
 
         if st.button("Enter", type="primary"):
             st.session_state["reviewer_id"] = reviewer_id.strip()
             st.session_state["run_id"] = (selected_run or "").strip()
-            st.session_state["session_id"] = st.session_state.get("session_id") or str(uuid.uuid4())
+            st.session_state["session_id"] = st.session_state.get(
+                "session_id"
+            ) or str(uuid.uuid4())
             st.rerun()
 
         st.markdown("---")
@@ -577,7 +649,9 @@ def main() -> None:
             _latest_row = _match.iloc[0]
 
     existing_regions: list[dict] = (
-        _parse_regions(_latest_row.get("regions_json", "")) if _latest_row is not None else []
+        _parse_regions(_latest_row.get("regions_json", ""))
+        if _latest_row is not None
+        else []
     )
     # One-shot "reset" flag — when set by the Reset canvas button, suppress the saved
     # regions for a single render so the canvas comes up empty. The flag clears
@@ -611,23 +685,28 @@ def main() -> None:
         f'<div style="display:flex;justify-content:space-between;align-items:center;'
         f'width:100%;font-size:1.1rem;margin:0.15rem 0;color:inherit">'
         f'<span style="text-align:left">ARU: {aru_display}</span>'
-        f'<span>Date: {date_str}</span>'
-        f'<span>Time: {time_str}</span>'
-        f'<span>BirdNET Confidence: {conf_str}</span>'
+        f"<span>Date: {date_str}</span>"
+        f"<span>Time: {time_str}</span>"
+        f"<span>BirdNET Confidence: {conf_str}</span>"
         f'<span style="text-align:right">Label: {_existing_label}</span>'
-        f'</div>'
+        f"</div>"
     )
 
-    clip_path = _runs_dir(project_root) / run_id / str(row.get("clip_path", ""))
+    clip_path = (
+        _runs_dir(project_root) / run_id / str(row.get("clip_path", ""))
+    )
     if not clip_path.exists():
         st.error(f"Clip not found: {clip_path}")
         return
 
-    clip_duration_s = float(row.get("clip_end_s", 0.0)) - float(row.get("clip_start_s", 0.0))
+    clip_duration_s = float(row.get("clip_end_s", 0.0)) - float(
+        row.get("clip_start_s", 0.0)
+    )
     if clip_duration_s <= 0:
         clip_duration_s = DEFAULT_CLIP_DURATION_S
 
     import base64
+
     _audio_b64 = base64.b64encode(clip_path.read_bytes()).decode()
     # Audio is now rendered INSIDE the canvas component so audio events drive
     # the timestamp and the playhead with no cross-iframe communication.
@@ -642,10 +721,14 @@ def main() -> None:
         st.session_state[init_key] = True
 
     initial_other_birds = bool(
-        int(_latest_row.get("other_birds_present", 0) or 0) if _latest_row is not None else 0
+        int(_latest_row.get("other_birds_present", 0) or 0)
+        if _latest_row is not None
+        else 0
     )
     initial_unsure = bool(
-        int(_latest_row.get("unsure", 0) or 0) if _latest_row is not None else 0
+        int(_latest_row.get("unsure", 0) or 0)
+        if _latest_row is not None
+        else 0
     )
 
     spec_b64 = _spectrogram_png_b64_for_clip(clip_path, _item_id)
@@ -659,16 +742,23 @@ def main() -> None:
     initial_rects: list[dict] = []
     for region in existing_regions:
         rect = region_to_rect(
-            region, CANVAS_WIDTH, CANVAS_HEIGHT, clip_duration_s, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
+            region,
+            CANVAS_WIDTH,
+            CANVAS_HEIGHT,
+            clip_duration_s,
+            CANVAS_FMIN_HZ,
+            CANVAS_FMAX_HZ,
         )
-        initial_rects.append({
-            "left": float(rect["left"]),
-            "top": float(rect["top"]),
-            "width": float(rect["width"]),
-            "height": float(rect["height"]),
-            "stroke": rect["stroke"],
-            "label": region.get("label", "Tom"),
-        })
+        initial_rects.append(
+            {
+                "left": float(rect["left"]),
+                "top": float(rect["top"]),
+                "width": float(rect["width"]),
+                "height": float(rect["height"]),
+                "stroke": rect["stroke"],
+                "label": region.get("label", "Tom"),
+            }
+        )
 
     nonce = st.session_state.get(f"canvas_nonce_{_item_id}", 0)
     canvas_state = turkey_canvas(
@@ -691,14 +781,20 @@ def main() -> None:
         key=f"canvas_{_item_id}_{nonce}",
     )
     canvas_rects = canvas_state.get("rectangles", []) or []
-    other_birds_present = bool(canvas_state.get("otherBirdsPresent", initial_other_birds))
+    other_birds_present = bool(
+        canvas_state.get("otherBirdsPresent", initial_other_birds)
+    )
     unsure = bool(canvas_state.get("unsure", initial_unsure))
 
     action_cols = st.columns([2, 1, 1, 1])
-    save_clicked = action_cols[0].button("Save & Next", type="primary", width="stretch")
+    save_clicked = action_cols[0].button(
+        "Save & Next", type="primary", width="stretch"
+    )
     prev_clicked = action_cols[1].button("Previous", width="stretch")
     discard_clicked = action_cols[2].button("Reset canvas", width="stretch")
-    jump_clicked = action_cols[3].button("Jump to first unlabeled", width="stretch")
+    jump_clicked = action_cols[3].button(
+        "Jump to first unlabeled", width="stretch"
+    )
 
     if save_clicked:
         regions: list[dict] = []
@@ -735,7 +831,8 @@ def main() -> None:
             "tom_present": tom_present,
             "hen_present": hen_present,
             "label_timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            "session_id": st.session_state.get("session_id") or str(uuid.uuid4()),
+            "session_id": st.session_state.get("session_id")
+            or str(uuid.uuid4()),
         }
         _append_label_row(project_root, out_row)
         st.session_state["cursor"] = min(cursor + 1, total - 1)

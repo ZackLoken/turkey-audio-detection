@@ -12,9 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from turkey_audio_detection.adjudication import _latest_labels, _load_label_files
+from turkey_audio_detection.adjudication import (
+    _latest_labels,
+    _load_label_files,
+)
 from turkey_audio_detection.layout import RunLayout
-
 
 PRESENCE_ATTRIBUTES = ("tom_present", "hen_present")
 
@@ -69,7 +71,9 @@ def aggregate_reviewers(labels_dir: Path) -> pd.DataFrame:
         other, _ = _majority_vote(group["other_birds_present"])
         # any_unsure votes also factor: if more than half of reviewers were unsure,
         # mark the clip non-consensus regardless of attribute agreement.
-        unsure_majority = int((group["unsure"].fillna(0).astype(int) == 1).sum() * 2) > n
+        unsure_majority = (
+            int((group["unsure"].fillna(0).astype(int) == 1).sum() * 2) > n
+        )
         consensus = tom_cons and hen_cons and not unsure_majority
 
         # Pick the "most informative" snapshot for regions: prefer rows whose
@@ -78,13 +82,18 @@ def aggregate_reviewers(labels_dir: Path) -> pd.DataFrame:
         # who disagreed about presence.
         target_sum = int(tom + hen)
         candidates = group[
-            (group["tom_present"].fillna(0).astype(int) + group["hen_present"].fillna(0).astype(int))
+            (
+                group["tom_present"].fillna(0).astype(int)
+                + group["hen_present"].fillna(0).astype(int)
+            )
             == target_sum
         ]
         if candidates.empty:
             candidates = group
         candidates = candidates.sort_values("label_timestamp_utc")
-        regions_json = str(candidates.iloc[-1].get("regions_json", "[]")) or "[]"
+        regions_json = (
+            str(candidates.iloc[-1].get("regions_json", "[]")) or "[]"
+        )
 
         rows.append(
             {
@@ -132,14 +141,18 @@ def build_training_table(
         layout = RunLayout.from_project_root(project_root, run_id)
         queue_path = layout.queue_dir / "review_queue.csv"
         if not queue_path.exists():
-            raise FileNotFoundError(f"Missing review queue for {run_id}: {queue_path}")
+            raise FileNotFoundError(
+                f"Missing review queue for {run_id}: {queue_path}"
+            )
         q = pd.read_csv(queue_path)
         q["__run_id"] = run_id
         queue_frames.append(q)
     queue_df = pd.concat(queue_frames, ignore_index=True)
 
     # Labels live under data/_outputs/review/labels/ — shared across runs.
-    labels_dir = RunLayout.from_project_root(project_root, run_ids[0]).review_labels_dir
+    labels_dir = RunLayout.from_project_root(
+        project_root, run_ids[0]
+    ).review_labels_dir
     agg = aggregate_reviewers(labels_dir)
 
     merged = queue_df.merge(agg, on="item_id", how="inner")

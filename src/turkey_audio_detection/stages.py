@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
+import re
+import zoneinfo
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-import re
-import zoneinfo
 
 import pandas as pd
 import soundfile as sf
 from astral import LocationInfo
 from astral.sun import sun
 
-from turkey_audio_detection.config import BirdNetConfig, ClipConfig, IndexConfig
+from turkey_audio_detection.config import (
+    BirdNetConfig,
+    ClipConfig,
+    IndexConfig,
+)
 from turkey_audio_detection.ids import make_detection_id, make_item_id
 from turkey_audio_detection.layout import RunLayout, find_aru_dirs
 from turkey_audio_detection.spectrogram_render import save_canvas_spectrogram
-
 
 FILENAME_PATTERN = re.compile(r"^(\w+)_(\d{8})_(\d{6})\.wav$", re.IGNORECASE)
 
@@ -29,7 +32,9 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
-def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame, pd.DataFrame]:
+def stage_index_data(
+    layout: RunLayout, cfg: IndexConfig
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     records: list[dict] = []
     quarantine: list[dict] = []
 
@@ -51,7 +56,9 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
             device_id = match.group(1)
             date_str = match.group(2)
             time_str = match.group(3)
-            rec_datetime = datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+            rec_datetime = datetime.strptime(
+                f"{date_str}_{time_str}", "%Y%m%d_%H%M%S"
+            )
             if rec_datetime.date() < cfg.deployment_start:
                 quarantine.append(
                     {
@@ -75,7 +82,9 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
 
     index_df = pd.DataFrame(
         records,
-        columns=pd.Index(["aru_id", "device_id", "date", "time", "datetime", "filepath"]),
+        columns=pd.Index(
+            ["aru_id", "device_id", "date", "time", "datetime", "filepath"]
+        ),
     )
     quarantine_df = pd.DataFrame(
         quarantine, columns=pd.Index(["filepath", "filename", "reason"])
@@ -130,11 +139,22 @@ def stage_index_data(layout: RunLayout, cfg: IndexConfig) -> tuple[pd.DataFrame,
     return index_df, quarantine_df
 
 
-DETECTION_COLUMNS = pd.Index([
-    "detection_id", "project_root", "aru_id", "audio_path",
-    "start_time_s", "end_time_s", "species_code", "species_common_name",
-    "confidence", "birdnet_model_version", "source_filename", "source_row_index",
-])
+DETECTION_COLUMNS = pd.Index(
+    [
+        "detection_id",
+        "project_root",
+        "aru_id",
+        "audio_path",
+        "start_time_s",
+        "end_time_s",
+        "species_code",
+        "species_common_name",
+        "confidence",
+        "birdnet_model_version",
+        "source_filename",
+        "source_row_index",
+    ]
+)
 
 
 def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
@@ -167,13 +187,17 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
     rows: list[dict] = []
     errors: list[dict] = []
     if progress_path.exists():
-        processed_filepaths = set(pd.read_csv(progress_path)["filepath"].astype(str))
+        processed_filepaths = set(
+            pd.read_csv(progress_path)["filepath"].astype(str)
+        )
     if detections_path.exists():
         rows = pd.read_csv(detections_path).to_dict("records")
     if errors_path.exists():
         errors = pd.read_csv(errors_path).to_dict("records")
 
-    remaining_df = df_index[~df_index["filepath"].astype(str).isin(processed_filepaths)]
+    remaining_df = df_index[
+        ~df_index["filepath"].astype(str).isin(processed_filepaths)
+    ]
 
     from birdnetlib import Recording
     from birdnetlib.analyzer import Analyzer
@@ -182,10 +206,16 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
     analyzer = Analyzer()
 
     def _checkpoint() -> None:
-        pd.DataFrame({"filepath": sorted(processed_filepaths)}).to_csv(progress_path, index=False)
-        pd.DataFrame(rows, columns=DETECTION_COLUMNS).to_csv(detections_path, index=False)
+        pd.DataFrame({"filepath": sorted(processed_filepaths)}).to_csv(
+            progress_path, index=False
+        )
+        pd.DataFrame(rows, columns=DETECTION_COLUMNS).to_csv(
+            detections_path, index=False
+        )
         if errors:
-            pd.DataFrame(errors, columns=pd.Index(["filepath", "error"])).to_csv(errors_path, index=False)
+            pd.DataFrame(
+                errors, columns=pd.Index(["filepath", "error"])
+            ).to_csv(errors_path, index=False)
 
     for row_idx, row in tqdm(
         remaining_df.iterrows(),
@@ -255,12 +285,18 @@ def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
 
     out_df = pd.DataFrame(rows, columns=DETECTION_COLUMNS)
     if not out_df.empty:
-        out_df.sort_values(["audio_path", "start_time_s", "end_time_s"], inplace=True, ignore_index=True)
+        out_df.sort_values(
+            ["audio_path", "start_time_s", "end_time_s"],
+            inplace=True,
+            ignore_index=True,
+        )
     out_df.to_csv(detections_path, index=False)
     return out_df
 
 
-def _extract_clip(audio_path: Path, clip_path: Path, start_s: float, duration_s: float) -> None:
+def _extract_clip(
+    audio_path: Path, clip_path: Path, start_s: float, duration_s: float
+) -> None:
     info = sf.info(str(audio_path))
     sr = int(info.samplerate)
     n_frames = int(duration_s * sr)
@@ -288,29 +324,33 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
     detections_df = pd.read_csv(detections_path)
     if detections_df.empty:
         queue_df = pd.DataFrame(
-            columns=pd.Index([
-                "item_id",
-                "detection_id",
-                "clip_path",
-                "clip_start_s",
-                "clip_end_s",
-                "queue_order",
-                "project_root",
-                "aru_id",
-                "source_audio_path",
-                "confidence",
-                "recording_datetime",
-            ])
+            columns=pd.Index(
+                [
+                    "item_id",
+                    "detection_id",
+                    "clip_path",
+                    "clip_start_s",
+                    "clip_end_s",
+                    "queue_order",
+                    "project_root",
+                    "aru_id",
+                    "source_audio_path",
+                    "confidence",
+                    "recording_datetime",
+                ]
+            )
         )
         queue_df.to_csv(layout.queue_dir / "review_queue.csv", index=False)
         return queue_df
 
     if "species_common_name" not in detections_df.columns:
-        raise ValueError("detections CSV is missing 'species_common_name' column")
-    turkey_df = detections_df[
-        detections_df["species_common_name"].astype(str).str.contains(
-            cfg.species_match_substring, case=False, na=False
+        raise ValueError(
+            "detections CSV is missing 'species_common_name' column"
         )
+    turkey_df = detections_df[
+        detections_df["species_common_name"]
+        .astype(str)
+        .str.contains(cfg.species_match_substring, case=False, na=False)
     ].copy()
 
     rows: list[dict] = []
@@ -327,7 +367,9 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
         clip_name = f"{item_id}.wav"
         clip_path = layout.clips_dir / clip_name
         if not clip_path.exists():
-            _extract_clip(audio_path, clip_path, clip_start, cfg.clip_duration_s)
+            _extract_clip(
+                audio_path, clip_path, clip_start, cfg.clip_duration_s
+            )
 
         # Parse recording datetime from filename for display in review app
         fname_match = FILENAME_PATTERN.match(audio_path.name)
@@ -335,7 +377,8 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
         if fname_match:
             try:
                 recording_datetime = datetime.strptime(
-                    f"{fname_match.group(2)}_{fname_match.group(3)}", "%Y%m%d_%H%M%S"
+                    f"{fname_match.group(2)}_{fname_match.group(3)}",
+                    "%Y%m%d_%H%M%S",
                 ).isoformat(sep=" ")
             except ValueError:
                 pass
@@ -358,7 +401,9 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
 
     queue_df = pd.DataFrame(rows)
     if not queue_df.empty:
-        queue_df = queue_df.sort_values(["source_audio_path", "clip_start_s", "item_id"]).reset_index(drop=True)
+        queue_df = queue_df.sort_values(
+            ["source_audio_path", "clip_start_s", "item_id"]
+        ).reset_index(drop=True)
         queue_df["queue_order"] = queue_df.index + 1
 
     layout.queue_dir.mkdir(parents=True, exist_ok=True)
@@ -406,10 +451,17 @@ def stage_cache_spectrograms(layout: RunLayout, force: bool = False) -> dict:
         else:
             failed += 1
 
-    return {"total": int(len(queue_df)), "rendered": rendered, "skipped": skipped, "failed": failed}
+    return {
+        "total": int(len(queue_df)),
+        "rendered": rendered,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
-def stage_config_snapshot(index: IndexConfig, birdnet: BirdNetConfig, clips: ClipConfig) -> dict:
+def stage_config_snapshot(
+    index: IndexConfig, birdnet: BirdNetConfig, clips: ClipConfig
+) -> dict:
     return {
         "index": index.model_dump(mode="json"),
         "birdnet": birdnet.model_dump(mode="json"),

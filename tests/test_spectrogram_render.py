@@ -18,9 +18,15 @@ def _make_wav(path: Path, duration_s: float = 3.0, sr: int = 48000) -> None:
     sf.write(str(path), data, sr)
 
 
-def test_spectrogram_for_canvas_returns_exact_dimensions(tmp_path: Path) -> None:
+def test_spectrogram_for_canvas_returns_exact_dimensions(
+    tmp_path: Path,
+) -> None:
     pytest.importorskip("PIL")
-    from turkey_audio_detection.app import _spectrogram_for_canvas, CANVAS_HEIGHT, CANVAS_WIDTH
+    from turkey_audio_detection.app import (
+        CANVAS_HEIGHT,
+        CANVAS_WIDTH,
+        _spectrogram_for_canvas,
+    )
 
     wav = tmp_path / "test.wav"
     _make_wav(wav)
@@ -31,8 +37,16 @@ def test_spectrogram_for_canvas_returns_exact_dimensions(tmp_path: Path) -> None
     assert img.mode == "RGB"
 
 
-def test_spectrogram_for_canvas_returns_none_for_missing_file(tmp_path: Path) -> None:
-    from turkey_audio_detection.app import _spectrogram_for_canvas, CANVAS_HEIGHT, CANVAS_WIDTH
+def test_spectrogram_for_canvas_returns_none_for_missing_file(
+    tmp_path: Path,
+) -> None:
+    from turkey_audio_detection.app import (
+        CANVAS_HEIGHT,
+        CANVAS_WIDTH,
+        _spectrogram_for_canvas,
+    )
 
-    img = _spectrogram_for_canvas(str(tmp_path / "does_not_exist.wav"), CANVAS_WIDTH, CANVAS_HEIGHT)
+    img = _spectrogram_for_canvas(
+        str(tmp_path / "does_not_exist.wav"), CANVAS_WIDTH, CANVAS_HEIGHT
+    )
     assert img is None

@@ -80,7 +80,13 @@ def find_aru_dirs(project_root: Path) -> list[Path]:
     data_root = project_root / "data"
     if not data_root.exists():
         return []
-    return sorted([d for d in data_root.iterdir() if d.is_dir() and d.name.startswith("ARU_")])
+    return sorted(
+        [
+            d
+            for d in data_root.iterdir()
+            if d.is_dir() and d.name.startswith("ARU_")
+        ]
+    )
 
 
 def validate_project_layout(project_root: Path) -> list[Path]:

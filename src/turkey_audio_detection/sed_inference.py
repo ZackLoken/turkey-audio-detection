@@ -23,17 +23,31 @@ from turkey_audio_detection.config import SedInferConfig
 from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES
 from turkey_audio_detection.ids import _digest
 from turkey_audio_detection.layout import inference_dir, model_dir
-from turkey_audio_detection.manifest import build_stage_manifest, write_manifest
+from turkey_audio_detection.manifest import (
+    build_stage_manifest,
+    write_manifest,
+)
 from turkey_audio_detection.models.frame_sed import FrameSed
-from turkey_audio_detection.sed_data import LogMelExtractor, SedMelParams, normalize_log_mel
+from turkey_audio_detection.sed_data import (
+    LogMelExtractor,
+    SedMelParams,
+    normalize_log_mel,
+)
 from turkey_audio_detection.sites import attach_site, load_site_map
 
 _INDEX_TO_CLASS = {v: k for k, v in CLASS_INDEX.items()}
 
 
-def make_event_id(audio_path: str, start_s: float, end_s: float, label: str) -> str:
+def make_event_id(
+    audio_path: str, start_s: float, end_s: float, label: str
+) -> str:
     return "evt_" + _digest(
-        [Path(audio_path).as_posix().lower(), f"{start_s:.3f}", f"{end_s:.3f}", label.strip().lower()]
+        [
+            Path(audio_path).as_posix().lower(),
+            f"{start_s:.3f}",
+            f"{end_s:.3f}",
+            label.strip().lower(),
+        ]
     )
 
 
@@ -44,9 +58,13 @@ def _infer_aru_id(audio_path: Path) -> str:
     return ""
 
 
-def load_sed_model(checkpoint_path: Path, device: torch.device) -> tuple[FrameSed, dict]:
+def load_sed_model(
+    checkpoint_path: Path, device: torch.device
+) -> tuple[FrameSed, dict]:
     """Rebuild FrameSed from a training checkpoint and load weights."""
-    payload = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
+    payload = torch.load(
+        str(checkpoint_path), map_location=device, weights_only=False
+    )
     cfg = payload["config"]
     model = FrameSed(
         n_classes=N_CLASSES,
@@ -56,7 +74,9 @@ def load_sed_model(checkpoint_path: Path, device: torch.device) -> tuple[FrameSe
         n_layers=int(cfg.get("n_layers", 2)),
         dropout=float(cfg.get("dropout", 0.2)),
         pretrained=False,  # weights come from the checkpoint, not the hub
-        config_dict=payload.get("backbone_config"),  # rebuild the exact trained architecture
+        config_dict=payload.get(
+            "backbone_config"
+        ),  # rebuild the exact trained architecture
     ).to(device)
     model.load_state_dict(payload["model_state"])
     model.eval()
@@ -97,11 +117,19 @@ def frames_to_events(
         end_s = offset_s + t1 * hop_s
         if (end_s - start_s) < min_duration_s:
             continue
-        events.append({"start_s": round(start_s, 4), "end_s": round(end_s, 4), "score": round(float(prob[t0:t1].mean()), 4)})
+        events.append(
+            {
+                "start_s": round(start_s, 4),
+                "end_s": round(end_s, 4),
+                "score": round(float(prob[t0:t1].mean()), 4),
+            }
+        )
     return events
 
 
-def stitch_windows(window_results: list[tuple[int, np.ndarray]], total_frames: int) -> np.ndarray:
+def stitch_windows(
+    window_results: list[tuple[int, np.ndarray]], total_frames: int
+) -> np.ndarray:
     """Average overlapping per-frame probs onto a (N_CLASSES, total_frames) timeline.
 
     window_results: list of (frame_offset, probs[N_CLASSES, t_window]).
@@ -139,7 +167,9 @@ def infer_recording(
     inference_id: str,
 ) -> pd.DataFrame:
     """Slide the model over a full recording and return its events."""
-    hop_s = (mel.hop_length * int(payload.get("time_downsample", 8))) / mel.sample_rate
+    hop_s = (
+        mel.hop_length * int(payload.get("time_downsample", 8))
+    ) / mel.sample_rate
     thresholds = cfg.thresholds or payload.get("thresholds", {}) or {}
     win_n = int(round(cfg.window_duration_s * mel.sample_rate))
     stride_n = max(1, int(round(cfg.window_stride_s * mel.sample_rate)))
@@ -159,8 +189,12 @@ def infer_recording(
     for s in starts:
         seg = y[s : s + win_n]
         if seg.size < win_n:
-            seg = np.concatenate([seg, np.zeros(win_n - seg.size, dtype=seg.dtype)])
-        log_mel = normalize_log_mel(extractor(torch.from_numpy(seg.astype(np.float32))).numpy(), mel)
+            seg = np.concatenate(
+                [seg, np.zeros(win_n - seg.size, dtype=seg.dtype)]
+            )
+        log_mel = normalize_log_mel(
+            extractor(torch.from_numpy(seg.astype(np.float32))).numpy(), mel
+        )
         mels.append(log_mel)
         offsets.append(int(round((s / mel.sample_rate) / hop_s)))
 
@@ -169,7 +203,11 @@ def infer_recording(
     for i in range(0, len(mels), bs):
         batch = np.stack(mels[i : i + bs])
         with torch.no_grad():
-            probs = torch.sigmoid(model(torch.from_numpy(batch).to(device))).cpu().numpy()  # (b, C, T')
+            probs = (
+                torch.sigmoid(model(torch.from_numpy(batch).to(device)))
+                .cpu()
+                .numpy()
+            )  # (b, C, T')
         for j in range(probs.shape[0]):
             window_results.append((offsets[i + j], probs[j]))
 
@@ -179,18 +217,24 @@ def infer_recording(
     for c in range(N_CLASSES):
         label = _INDEX_TO_CLASS[c]
         thr = float(thresholds.get(label, 0.5))
-        for ev in frames_to_events(timeline[c], thr, cfg.min_event_duration_s, cfg.merge_gap_s, hop_s):
-            rows.append({
-                "event_id": make_event_id(str(audio_path), ev["start_s"], ev["end_s"], label),
-                "source_audio_path": str(audio_path),
-                "aru_id": aru_id,
-                "start_time_s": ev["start_s"],
-                "end_time_s": ev["end_s"],
-                "sex": label,
-                "score": ev["score"],
-                "model_id": cfg.model_id,
-                "inference_id": inference_id,
-            })
+        for ev in frames_to_events(
+            timeline[c], thr, cfg.min_event_duration_s, cfg.merge_gap_s, hop_s
+        ):
+            rows.append(
+                {
+                    "event_id": make_event_id(
+                        str(audio_path), ev["start_s"], ev["end_s"], label
+                    ),
+                    "source_audio_path": str(audio_path),
+                    "aru_id": aru_id,
+                    "start_time_s": ev["start_s"],
+                    "end_time_s": ev["end_s"],
+                    "sex": label,
+                    "score": ev["score"],
+                    "model_id": cfg.model_id,
+                    "inference_id": inference_id,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -204,13 +248,23 @@ def _date_from_path(path: str) -> str:
     return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
 
 
-def aggregate_counts(events: pd.DataFrame, site_map: dict[str, str]) -> pd.DataFrame:
+def aggregate_counts(
+    events: pd.DataFrame, site_map: dict[str, str]
+) -> pd.DataFrame:
     """Events -> presence + counts per (site, date, sex)."""
     if events.empty:
-        return pd.DataFrame(columns=pd.Index(["site_id", "date", "sex", "n_events", "present"]))
+        return pd.DataFrame(
+            columns=pd.Index(["site_id", "date", "sex", "n_events", "present"])
+        )
     df = attach_site(events, site_map)
-    df["date"] = pd.to_datetime(df["source_audio_path"].map(_date_from_path), errors="coerce").dt.date.astype("string")
-    grouped = df.groupby(["site_id", "date", "sex"]).size().reset_index(name="n_events")
+    df["date"] = pd.to_datetime(
+        df["source_audio_path"].map(_date_from_path), errors="coerce"
+    ).dt.date.astype("string")
+    grouped = (
+        df.groupby(["site_id", "date", "sex"])
+        .size()
+        .reset_index(name="n_events")
+    )
     grouped["present"] = 1
     return grouped
 
@@ -226,7 +280,9 @@ def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
 
     audio_files = sorted(Path(project_root).glob(cfg.audio_glob))
     if not audio_files:
-        raise RuntimeError(f"No audio files matched glob: {cfg.audio_glob} under {project_root}")
+        raise RuntimeError(
+            f"No audio files matched glob: {cfg.audio_glob} under {project_root}"
+        )
 
     out_dir = inference_dir(Path(project_root), cfg.inference_id)
     events_dir = out_dir / "events"
@@ -235,23 +291,44 @@ def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
     all_events: list[pd.DataFrame] = []
     summary: list[dict] = []
     for audio_path in audio_files:
-        ev = infer_recording(audio_path, model, mel, extractor, payload, cfg, device, cfg.inference_id)
+        ev = infer_recording(
+            audio_path,
+            model,
+            mel,
+            extractor,
+            payload,
+            cfg,
+            device,
+            cfg.inference_id,
+        )
         if not ev.empty:
             ev.to_csv(events_dir / (audio_path.stem + ".csv"), index=False)
             all_events.append(ev)
-        summary.append({"audio_path": str(audio_path), "n_events": int(len(ev))})
+        summary.append(
+            {"audio_path": str(audio_path), "n_events": int(len(ev))}
+        )
 
-    events_df = pd.concat(all_events, ignore_index=True) if all_events else pd.DataFrame()
-    aggregate_counts(events_df, load_site_map(Path(project_root) / cfg.site_map_path)).to_csv(
-        out_dir / "aggregate_counts.csv", index=False
+    events_df = (
+        pd.concat(all_events, ignore_index=True)
+        if all_events
+        else pd.DataFrame()
     )
+    aggregate_counts(
+        events_df, load_site_map(Path(project_root) / cfg.site_map_path)
+    ).to_csv(out_dir / "aggregate_counts.csv", index=False)
     pd.DataFrame(summary).to_csv(out_dir / "summary.csv", index=False)
 
     manifest = build_stage_manifest(
-        run_id=cfg.inference_id, stage="classify", project_root=Path(project_root),
+        run_id=cfg.inference_id,
+        stage="classify",
+        project_root=Path(project_root),
         config_snapshot={"sed_infer": cfg.model_dump(mode="json")},
-        stage_outputs={"events_dir": str(events_dir), "summary_csv": str(out_dir / "summary.csv")},
-        status="completed", input_file_count=len(audio_files),
+        stage_outputs={
+            "events_dir": str(events_dir),
+            "summary_csv": str(out_dir / "summary.csv"),
+        },
+        status="completed",
+        input_file_count=len(audio_files),
     )
     write_manifest(out_dir / "inference_manifest.json", manifest)
     return {

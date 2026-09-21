@@ -83,12 +83,16 @@ class SedInferConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model_id: str
-    audio_glob: str = "data/ARU_*/**/*.wav"  # recordings to run the detector over
+    audio_glob: str = (
+        "data/ARU_*/**/*.wav"  # recordings to run the detector over
+    )
     inference_id: str = ""  # filled by CLI if empty
     window_duration_s: float = Field(default=3.0, gt=0.0, le=30.0)
     window_stride_s: float = Field(default=1.0, gt=0.0, le=30.0)
     min_event_duration_s: float = Field(default=0.1, ge=0.0, le=10.0)
     merge_gap_s: float = Field(default=0.2, ge=0.0, le=10.0)
-    thresholds: dict[str, float] | None = None  # overrides checkpoint per-class thresholds
+    thresholds: dict[str, float] | None = (
+        None  # overrides checkpoint per-class thresholds
+    )
     batch_size: int = Field(default=16, ge=1)
     site_map_path: str = "data/site_map.csv"

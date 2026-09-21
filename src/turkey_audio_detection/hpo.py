@@ -18,11 +18,16 @@ from turkey_audio_detection.dataset import CLASS_INDEX
 from turkey_audio_detection.evaluation import evaluate_table
 from turkey_audio_detection.layout import model_dir
 from turkey_audio_detection.sed_inference import load_sed_model
-from turkey_audio_detection.sed_training import site_split, train_sed_from_table
+from turkey_audio_detection.sed_training import (
+    site_split,
+    train_sed_from_table,
+)
 from turkey_audio_detection.sites import attach_site, load_site_map
 
 
-def suggest_config(trial: optuna.Trial, base: SedTrainConfig) -> SedTrainConfig:
+def suggest_config(
+    trial: optuna.Trial, base: SedTrainConfig
+) -> SedTrainConfig:
     """Sample a SedTrainConfig from `base`, overriding the tuned fields."""
     overrides = dict(
         temporal=trial.suggest_categorical("temporal", ["bigru", "tcn"]),
@@ -33,7 +38,9 @@ def suggest_config(trial: optuna.Trial, base: SedTrainConfig) -> SedTrainConfig:
         pos_weight=trial.suggest_float("pos_weight", 1.0, 20.0, log=True),
         base_lr=trial.suggest_float("base_lr", 1e-4, 3e-3, log=True),
         n_stages=trial.suggest_int("n_stages", 1, 3),
-        backbone_lr_mult=trial.suggest_float("backbone_lr_mult", 0.05, 0.5, log=True),
+        backbone_lr_mult=trial.suggest_float(
+            "backbone_lr_mult", 0.05, 0.5, log=True
+        ),
     )
     return base.model_copy(update=overrides)
 
@@ -45,17 +52,32 @@ def _val_split(table, cfg: SedTrainConfig, project_root: Path):
     return t[t["split"] == "val"].reset_index(drop=True)
 
 
-def objective(trial, table, project_root: Path, base_cfg: SedTrainConfig, iou: float = 0.3) -> float:
+def objective(
+    trial,
+    table,
+    project_root: Path,
+    base_cfg: SedTrainConfig,
+    iou: float = 0.3,
+) -> float:
     cfg = suggest_config(trial, base_cfg)
     cfg = cfg.model_copy(update={"model_id": f"hpo_trial_{trial.number}"})
     train_sed_from_table(table, cfg, project_root)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, payload = load_sed_model(model_dir(Path(project_root), cfg.model_id) / "checkpoint.pt", device)
+    model, payload = load_sed_model(
+        model_dir(Path(project_root), cfg.model_id) / "checkpoint.pt", device
+    )
     val_df = _val_split(table, cfg, project_root)
     if val_df.empty:
         return 0.0
-    result = evaluate_table(model, val_df, payload, device, iou_thresholds=(iou,), clip_duration_s=cfg.clip_duration_s)
+    result = evaluate_table(
+        model,
+        val_df,
+        payload,
+        device,
+        iou_thresholds=(iou,),
+        clip_duration_s=cfg.clip_duration_s,
+    )
     f1s = [result["event"][iou][name]["f1"] for name in CLASS_INDEX]
     return float(np.mean(f1s)) if f1s else 0.0
 
@@ -73,7 +95,13 @@ def run_hpo(
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     storage_url = f"sqlite:///{Path(storage).as_posix()}" if storage else None
     study = optuna.create_study(
-        direction="maximize", study_name=study_name, storage=storage_url, load_if_exists=True,
+        direction="maximize",
+        study_name=study_name,
+        storage=storage_url,
+        load_if_exists=True,
     )
-    study.optimize(lambda t: objective(t, table, project_root, base_cfg, iou), n_trials=n_trials)
+    study.optimize(
+        lambda t: objective(t, table, project_root, base_cfg, iou),
+        n_trials=n_trials,
+    )
     return study
