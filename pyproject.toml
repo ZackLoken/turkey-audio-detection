@@ -54,3 +54,19 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# 79 columns and target version: PEP 8 and requires-python above.
+line-length = 79
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, N pep8-naming: PEP 8 coverage.
+select = ["E", "W", "F", "I", "N"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["turkey_audio_detection"]
+
+[tool.ruff.format]
+quote-style = "double"
