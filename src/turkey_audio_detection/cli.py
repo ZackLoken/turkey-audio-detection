@@ -116,7 +116,8 @@ def _cmd_run_birdnet(args: argparse.Namespace) -> int:
     )
 
     _print(
-        f"run-birdnet completed for {project_root} | run_id={run_id} | detections={len(out_df)}"
+        f"run-birdnet completed for {project_root} | "
+        f"run_id={run_id} | detections={len(out_df)}"
     )
     return 0
 
@@ -149,7 +150,8 @@ def _cmd_extract_clips(args: argparse.Namespace) -> int:
     )
 
     _print(
-        f"extract-clips completed for {project_root} | run_id={run_id} | queue_items={len(queue_df)}"
+        f"extract-clips completed for {project_root} | "
+        f"run_id={run_id} | queue_items={len(queue_df)}"
     )
 
     if (
@@ -173,8 +175,9 @@ def _cmd_cache_spectrograms(args: argparse.Namespace) -> int:
     layout.spectrograms_dir.mkdir(parents=True, exist_ok=True)
     summary = stage_cache_spectrograms(layout, force=args.force)
     _print(
-        f"cache-spectrograms completed for {project_root} | run_id={args.run_id} | "
-        f"rendered={summary['rendered']} skipped={summary['skipped']} failed={summary['failed']}"
+        f"cache-spectrograms completed for {project_root} | "
+        f"run_id={args.run_id} | rendered={summary['rendered']} "
+        f"skipped={summary['skipped']} failed={summary['failed']}"
     )
     return 0
 
@@ -256,7 +259,8 @@ def _cmd_train(args: argparse.Namespace) -> int:
     result = train_sed(cfg, project_root)
     _print(
         f"train completed | model_id={result['model_id']} | "
-        f"n_train={result['n_train']} n_val={result['n_val']} n_test={result['n_test']} | "
+        f"n_train={result['n_train']} "
+        f"n_val={result['n_val']} n_test={result['n_test']} | "
         f"best_score={result['best_score']:.3f}"
     )
     return 0
@@ -336,7 +340,8 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     out = model_dir(project_root, args.model_id) / "eval.csv"
     evaluation_to_rows(result).to_csv(out, index=False)
     _print(
-        f"evaluate completed | model_id={args.model_id} | n_test={len(test_df)} | wrote {out}"
+        f"evaluate completed | model_id={args.model_id} | "
+        f"n_test={len(test_df)} | wrote {out}"
     )
     return 0
 
@@ -367,7 +372,9 @@ def _cmd_hpo(args: argparse.Namespace) -> int:
         study_name=args.study_name,
     )
     _print(
-        f"hpo completed | trials={len(study.trials)} | best_value={study.best_value:.3f} | best_params={study.best_params}"
+        f"hpo completed | trials={len(study.trials)} | "
+        f"best_value={study.best_value:.3f} | "
+        f"best_params={study.best_params}"
     )
     return 0
 
@@ -450,13 +457,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_clips.add_argument(
         "--skip-spectrogram-cache",
         action="store_true",
-        help="Skip pre-rendering review spectrograms (review app will compute on demand)",
+        help=(
+            "Skip pre-rendering review spectrograms (review app will "
+            "compute on demand)"
+        ),
     )
     p_clips.set_defaults(func=_cmd_extract_clips)
 
     p_cache = sub.add_parser(
         "cache-spectrograms",
-        help="Pre-render review-clip spectrograms to PNG so the review app loads instantly",
+        help=(
+            "Pre-render review-clip spectrograms to PNG so the review app "
+            "loads instantly"
+        ),
     )
     p_cache.add_argument("--project-root", required=True)
     p_cache.add_argument("--run-id", required=True)
@@ -594,13 +607,15 @@ def main() -> int:
 
 
 def main_train() -> int:
-    """Console-script entry point for `turkey-train` — routes to the `train` subcommand."""
+    """Console-script entry point for `turkey-train` - routes to the `train`
+    subcommand."""
     sys.argv.insert(1, "train")
     return main()
 
 
 def main_classify() -> int:
-    """Console-script entry point for `turkey-classify` — routes to the `classify` subcommand."""
+    """Console-script entry point for `turkey-classify` - routes to the
+    `classify` subcommand."""
     sys.argv.insert(1, "classify")
     return main()
 

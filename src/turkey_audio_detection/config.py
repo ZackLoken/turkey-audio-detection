@@ -77,8 +77,8 @@ class SedTrainConfig(BaseModel):
 
 
 class SedInferConfig(BaseModel):
-    """Config for whole-recording frame-level SED inference (the trained model runs
-    directly over full recordings; BirdNET is not used at inference)."""
+    """Config for whole-recording frame-level SED inference (the trained model
+    runs directly over full recordings; BirdNET is not used at inference)."""
 
     model_config = ConfigDict(extra="forbid")
 

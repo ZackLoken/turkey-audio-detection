@@ -1,4 +1,6 @@
-"""Tests for the FrameSed model + gradual-unfreeze hooks (offline, pretrained=False)."""
+"""Tests for the FrameSed model + gradual-unfreeze hooks (offline,
+pretrained=False).
+"""
 
 from __future__ import annotations
 

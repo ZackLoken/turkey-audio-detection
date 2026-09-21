@@ -1,15 +1,18 @@
 """Frame-level SED data pipeline (single-stage ConvNeXt-BirdSet model).
 
 One training sample = one labeled 3 s candidate clip ->
-  (log_mel (n_mels, T), frame_target (n_classes, T), weak (n_classes,), item_id)
+  (log_mel (n_mels, T), frame_target (n_classes, T), weak (n_classes,),
+  item_id)
 
-Targets are TIME-ONLY: each reviewer box (one call phrase = one event) is projected
-onto the time axis; frequency extent is dropped. Mel features match
-DBD-research-group/ConvNeXT-Base-BirdSet-XCL so the pretrained weights stay valid:
+Targets are TIME-ONLY: each reviewer box (one call phrase = one event) is
+projected onto the time axis; frequency extent is dropped. Mel features match
+DBD-research-group/ConvNeXT-Base-BirdSet-XCL so the pretrained weights stay
+valid:
 torchaudio Spectrogram(power=2) + MelScale(128) + PowerToDB(top_db=80), then a
 per-sample normalize (mean=-4.268, std=4.569) applied AFTER augmentation.
 
-This module is additive; the legacy 2D-mask path in `dataset.py` is retired later.
+This module is additive; the legacy 2D-mask path in `dataset.py` is
+retired later.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import librosa
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 import torchaudio
 from torch.utils.data import Dataset
 
@@ -32,7 +35,8 @@ from turkey_audio_detection.dataset import (
     parse_regions,
 )
 
-# Mel config of DBD-research-group/ConvNeXT-Base-BirdSet-XCL (must match to reuse weights).
+# Mel config of DBD-research-group/ConvNeXT-Base-BirdSet-XCL (must match
+# to reuse weights).
 SED_SR = 32000
 SED_N_FFT = 1024
 SED_HOP = 320  # 32000/320 = 100 frames/s -> 10 ms/frame at the mel
@@ -62,7 +66,8 @@ class SedMelParams:
 class LogMelExtractor(torch.nn.Module):
     """Waveform -> dB log-mel (n_mels, T), matched to BirdSet's PowerToDB.
 
-    Normalization is intentionally NOT applied here (see `normalize_log_mel`) so
+    Normalization is intentionally NOT applied here (see
+    `normalize_log_mel`) so
     augmentation can run in the dB domain before standardization.
     """
 
@@ -116,9 +121,11 @@ def load_waveform(
 def regions_to_frame_targets(
     regions: list[dict], n_frames: int, p: SedMelParams = SedMelParams()
 ) -> np.ndarray:
-    """Project reviewer boxes onto a (N_CLASSES, n_frames) time-only binary target.
+    """Project reviewer boxes onto a (N_CLASSES, n_frames) time-only
+    binary target.
 
-    Each box's [start_s, end_s] becomes 1 across the covered frames of its class.
+    Each box's [start_s, end_s] becomes 1 across the covered frames of
+    its class.
     Frequency extent is ignored. Empty regions -> all-zero (hard negative).
     """
     target = np.zeros((N_CLASSES, n_frames), dtype=np.float32)
@@ -140,9 +147,11 @@ def regions_to_frame_targets(
 
 
 def downsample_targets(target: np.ndarray, t_out: int) -> np.ndarray:
-    """Max-pool a (C, T) binary target along time to (C, t_out) to match model output.
+    """Max-pool a (C, T) binary target along time to (C, t_out) to match
+    model output.
 
-    Max-pool preserves presence: a pooled frame is positive if any source frame is.
+    Max-pool preserves presence: a pooled frame is positive if any
+    source frame is.
     """
     if target.shape[-1] == t_out:
         return target.astype(np.float32)
@@ -154,10 +163,12 @@ def downsample_targets(target: np.ndarray, t_out: int) -> np.ndarray:
 
 
 class FrameSedDataset(Dataset):
-    """Labeled clips -> (log_mel (n_mels,T), frame_target (C,T), weak (C,), item_id).
+    """Labeled clips -> (log_mel (n_mels,T), frame_target (C,T), weak
+    (C,), item_id).
 
     log_mel is normalized dB (augmentations applied in the dB domain first).
-    Augmentations are callables (log_mel_db, target, weak) -> (log_mel_db, target, weak).
+    Augmentations are callables (log_mel_db, target, weak) ->
+    (log_mel_db, target, weak).
     """
 
     def __init__(

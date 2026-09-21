@@ -1,11 +1,14 @@
 """Whole-recording frame-level SED inference.
 
 The trained model runs directly over each recording with overlapping sliding
-windows. BirdNET is NOT used here — it is only a labeling aid for proposing review
+windows. BirdNET is NOT used here - it is only a labeling aid for
+proposing review
 candidates; gating inference on it would cap the detector at BirdNET's recall.
 
-Per-window per-frame probabilities are averaged across overlaps onto a recording
-timeline, thresholded per class, grouped into events (start_s, end_s, sex, score),
+Per-window per-frame probabilities are averaged across overlaps onto a
+recording
+timeline, thresholded per class, grouped into events (start_s, end_s,
+sex, score),
 and aggregated to presence + counts per site/day.
 """
 
@@ -94,7 +97,8 @@ def frames_to_events(
     """Group a 1-D per-frame probability vector into events.
 
     Threshold -> runs of consecutive positive frames -> merge runs within
-    `merge_gap_s` -> drop runs shorter than `min_duration_s`. Score = mean prob.
+    `merge_gap_s` -> drop runs shorter than `min_duration_s`. Score =
+    mean prob.
     """
     above = prob >= threshold
     idx = np.where(above)[0]
@@ -130,7 +134,8 @@ def frames_to_events(
 def stitch_windows(
     window_results: list[tuple[int, np.ndarray]], total_frames: int
 ) -> np.ndarray:
-    """Average overlapping per-frame probs onto a (N_CLASSES, total_frames) timeline.
+    """Average overlapping per-frame probs onto a (N_CLASSES,
+    total_frames) timeline.
 
     window_results: list of (frame_offset, probs[N_CLASSES, t_window]).
     """
@@ -147,7 +152,9 @@ def stitch_windows(
 
 
 def _window_starts(n_samples: int, win_n: int, stride_n: int) -> list[int]:
-    """Sample start indices tiling the whole signal, with a final flush-right window."""
+    """Sample start indices tiling the whole signal, with a final
+    flush-right window.
+    """
     if n_samples <= win_n:
         return [0]
     starts = list(range(0, n_samples - win_n + 1, stride_n))
@@ -281,7 +288,8 @@ def infer_sed(cfg: SedInferConfig, project_root: Path) -> dict:
     audio_files = sorted(Path(project_root).glob(cfg.audio_glob))
     if not audio_files:
         raise RuntimeError(
-            f"No audio files matched glob: {cfg.audio_glob} under {project_root}"
+            f"No audio files matched glob: {cfg.audio_glob} "
+            f"under {project_root}"
         )
 
     out_dir = inference_dir(Path(project_root), cfg.inference_id)

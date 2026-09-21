@@ -1,9 +1,12 @@
 """BirdSet ConvNeXt frontend for frame-level SED.
 
-Runs the BirdSet-pretrained ConvNeXt embeddings + the first `n_stages` stages and
-returns a time-resolved feature map. Deeper stages are dropped to keep the model
+Runs the BirdSet-pretrained ConvNeXt embeddings + the first `n_stages`
+stages and
+returns a time-resolved feature map. Deeper stages are dropped to keep
+the model
 light and the time resolution fine (tight onset/offset). With the BirdSet mel
-(10 ms/frame), n_stages=2 gives ~80 ms/frame (8x downsample); n_stages=1 ~40 ms.
+(10 ms/frame), n_stages=2 gives ~80 ms/frame (8x downsample); n_stages=1
+~40 ms.
 """
 
 from __future__ import annotations
@@ -30,8 +33,8 @@ class ConvNextBackbone(nn.Module):
                 checkpoint, num_channels=1, ignore_mismatched_sizes=True
             )
         elif config_dict is not None:
-            # Rebuild the exact architecture used at training (random weights, no
-            # download) so a fine-tuned state_dict loads cleanly at inference time.
+            # Rebuild the training-time architecture (random weights,
+            # no download) so fine-tuned state_dict loads cleanly at inference.
             model = ConvNextForImageClassification(
                 ConvNextConfig.from_dict(config_dict)
             )
@@ -63,7 +66,9 @@ class ConvNextBackbone(nn.Module):
         return x
 
     def stage_groups(self) -> list[tuple[str, nn.Module]]:
-        """Ordered (name, module) from input to output, for gradual unfreezing."""
+        """Ordered (name, module) from input to output, for gradual
+        unfreezing.
+        """
         groups: list[tuple[str, nn.Module]] = [("embeddings", self.embeddings)]
         for i, st in enumerate(self.stages):
             groups.append((f"stage{i}", st))

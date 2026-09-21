@@ -91,7 +91,9 @@ def run_hpo(
     study_name: str = "sed_hpo",
     iou: float = 0.3,
 ) -> optuna.Study:
-    """Run (or resume) an Optuna study; returns the study (best params on study.best_params)."""
+    """Run (or resume) an Optuna study; returns the study (best params on
+    study.best_params).
+    """
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     storage_url = f"sqlite:///{Path(storage).as_posix()}" if storage else None
     study = optuna.create_study(

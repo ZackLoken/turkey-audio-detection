@@ -1,9 +1,10 @@
 """Gradual-unfreezing schedule for FrameSed.
 
-A schedule is a list of phases. Each phase unfreezes the top-`n_trainable_top_groups`
-layer-groups (counting from the output/head side toward the input), and carries the
-learning rate + batch size to use for that phase (the owner's preferred recipe:
-progressively unfreeze deeper layers while scaling LR/batch, with early stopping).
+A schedule is a list of phases. Each phase unfreezes the
+top-`n_trainable_top_groups` layer-groups (counting from the output/head
+side toward the input), and carries the learning rate + batch size to use
+for that phase (the owner's preferred recipe: progressively unfreeze
+deeper layers while scaling LR/batch, with early stopping).
 """
 
 from __future__ import annotations
@@ -32,7 +33,9 @@ class UnfreezeSchedule:
 
 
 def set_trainable(model: nn.Module, n_top_groups: int) -> int:
-    """Unfreeze the top `n_top_groups` layer-groups; freeze the rest. Returns #trainable params."""
+    """Unfreeze the top `n_top_groups` layer-groups; freeze the rest.
+    Returns #trainable params.
+    """
     groups = model.layer_groups()
     n = len(groups)
     k = max(0, min(int(n_top_groups), n))
@@ -54,8 +57,9 @@ def apply_phase(
 def default_schedule(
     n_backbone_groups: int, base_lr: float = 1e-3, base_batch: int = 32
 ) -> UnfreezeSchedule:
-    """Head-first phases, then progressively unfreeze one backbone group at a time,
-    halving LR and batch size each phase (scaled per the owner's recipe)."""
+    """Head-first phases, then progressively unfreeze one backbone group
+    at a time, halving LR and batch size each phase (scaled per the
+    owner's recipe)."""
     phases = [
         Phase(
             n_trainable_top_groups=2,

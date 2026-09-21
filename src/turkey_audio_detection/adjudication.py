@@ -41,7 +41,9 @@ def _latest_labels(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _per_attribute_view(df: pd.DataFrame, attribute: str) -> pd.DataFrame:
-    """Return a copy of df with a synthetic `label` column derived from one boolean attribute."""
+    """Return a copy of df with a synthetic `label` column derived from one
+    boolean attribute.
+    """
     out = df.copy()
     out["label"] = out[attribute].fillna(0).astype(int).astype(str)
     return out
@@ -60,7 +62,8 @@ def _reviewer_sub(
 ) -> pd.DataFrame:
     """Return (item_id, label_<alias>) rows for one reviewer.
 
-    Using `.loc[mask, cols]` instead of chained `df[mask][cols]` keeps pandas-stubs
+    Using `.loc[mask, cols]` instead of chained `df[mask][cols]` keeps
+    pandas-stubs
     narrowing happy — chained indexing's return type widens to ndarray-ish.
     """
     sub = df.loc[df["reviewer_id"] == reviewer, ["item_id", "label"]]

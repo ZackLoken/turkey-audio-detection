@@ -48,7 +48,8 @@ def _make_detections(layout: RunLayout, wav_path: Path) -> pd.DataFrame:
 def test_extract_clips_no_duplicate_queue_rows_on_rerun(
     tmp_path: Path,
 ) -> None:
-    """Running stage_extract_clips twice on the same detections must not produce duplicate queue rows."""
+    """Running stage_extract_clips twice on the same detections must not
+    produce duplicate queue rows."""
     layout = RunLayout.from_project_root(tmp_path, "run_20260424T010101Z")
     layout.ensure_dirs()
 
@@ -91,7 +92,8 @@ def _make_fake_recording_cls(detections_by_path: dict, crash_on_path: str):
 def test_run_birdnet_resumes_after_interruption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A crash mid-run must not force reprocessing files already checkpointed."""
+    """A crash mid-run must not force
+    reprocessing files already checkpointed."""
     import birdnetlib
     import birdnetlib.analyzer
 
@@ -156,8 +158,9 @@ def test_run_birdnet_resumes_after_interruption(
 
 
 def test_label_append_only_latest_wins_on_duplicate(tmp_path: Path) -> None:
-    """Appending a second snapshot for the same item_id must preserve both raw rows but
-    latest-by-timestamp must resolve to the most recent snapshot's presence flags."""
+    """Appending a second snapshot for the same item_id must preserve both
+    raw rows but latest-by-timestamp must resolve to the most recent
+    snapshot's presence flags."""
     from turkey_audio_detection.app import _append_label_row, _latest_by_item
 
     project_root = tmp_path

@@ -1,8 +1,10 @@
 """ARU -> site mapping for site-grouped train/val/test splits.
 
-Multiple ARUs can share a physical site, so splits must group by site (not ARU)
-to avoid leakage. The owner populates `data/site_map.csv` (columns: aru_id,site_id).
-Unmapped ARUs fall back to site_id == aru_id (each ARU its own site) with a warning.
+Multiple ARUs can share a physical site, so splits must group by site (not
+ARU) to avoid leakage. The owner populates `data/site_map.csv` (columns:
+aru_id,site_id).
+Unmapped ARUs fall back to site_id == aru_id (each ARU its own site) with a
+warning.
 """
 
 from __future__ import annotations
@@ -32,7 +34,9 @@ def load_site_map(path: str | Path) -> dict[str, str]:
 
 
 def attach_site(table: pd.DataFrame, site_map: dict[str, str]) -> pd.DataFrame:
-    """Add a `site_id` column from the map; unmapped ARUs fall back to their aru_id."""
+    """Add a `site_id` column from the map; unmapped ARUs fall back to
+    their aru_id.
+    """
     out = table.copy()
     aru = (
         out["aru_id"].astype(str)
@@ -45,6 +49,7 @@ def attach_site(table: pd.DataFrame, site_map: dict[str, str]) -> pd.DataFrame:
     )
     if unmapped:
         warnings.warn(
-            f"{len(unmapped)} ARU(s) not in site_map; using aru_id as site_id: {unmapped[:5]}"
+            f"{len(unmapped)} ARU(s) not in site_map; using aru_id as "
+            f"site_id: {unmapped[:5]}"
         )
     return out

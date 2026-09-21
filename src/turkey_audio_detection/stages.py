@@ -160,10 +160,10 @@ DETECTION_COLUMNS = pd.Index(
 def stage_run_birdnet(layout: RunLayout, cfg: BirdNetConfig) -> pd.DataFrame:
     """Run BirdNET over every indexed file, checkpointing after each one.
 
-    detections_normalized.csv and birdnet_progress.csv are rewritten after every
-    file, so a crash or shutdown mid-run loses at most the file in flight; calling
-    this again for the same run_id skips files already recorded in the progress
-    file and continues from there.
+    detections_normalized.csv and birdnet_progress.csv are rewritten after
+    every file, so a crash or shutdown mid-run loses at most the file in
+    flight; calling this again for the same run_id skips files already
+    recorded in the progress file and continues from there.
     """
     index_path = layout.index_dir / "file_index.csv"
     if not index_path.exists():
@@ -412,9 +412,11 @@ def stage_extract_clips(layout: RunLayout, cfg: ClipConfig) -> pd.DataFrame:
 
 
 def stage_cache_spectrograms(layout: RunLayout, force: bool = False) -> dict:
-    """Pre-render the canvas-band spectrogram PNG for every clip in the review queue.
+    """Pre-render the canvas-band spectrogram PNG for every clip in the
+    review queue.
 
-    Idempotent by default: skips PNGs that already exist. Pass force=True to overwrite.
+    Idempotent by default: skips PNGs that already exist. Pass force=True
+    to overwrite.
     Returns a small summary dict useful for CLI logging.
     """
     queue_path = layout.queue_dir / "review_queue.csv"

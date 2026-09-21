@@ -8,7 +8,8 @@ def test_detection_id_is_deterministic() -> None:
 
 
 def test_detection_id_normalizes_windows_path_separators() -> None:
-    """Backslash and forward-slash forms of the same path must produce the same ID."""
+    """Backslash and forward-slash forms of the same path must produce the
+    same ID."""
     a = make_detection_id(
         "C:\\data\\ARU_01\\file.wav", 1.0, 4.0, "Meleagris gallopavo"
     )

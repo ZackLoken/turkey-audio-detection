@@ -15,8 +15,10 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 # Spectrogram band shown in the reviewer canvas.
-# 50 Hz – 14 kHz covers the full audible range birds use (Wild Turkey calls dominate
-# 150–3000 Hz; songbirds + insects sit 4–10 kHz). Matches PANNs CNN14's training band,
+# 50 Hz – 14 kHz covers the full audible range birds use (Wild Turkey calls
+# dominate
+# 150–3000 Hz; songbirds + insects sit 4–10 kHz). Matches PANNs
+# CNN14's training band,
 # so downstream model training reuses these mel filters without re-extraction.
 CANVAS_FMIN_HZ = 50.0
 CANVAS_FMAX_HZ = 14000.0
@@ -42,8 +44,9 @@ _BG = "#0e1117"  # matches Streamlit dark theme background
 def data_area_bounds(
     canvas_w: int, canvas_h: int
 ) -> tuple[float, float, float, float]:
-    """Pixel bounds (left, top, right, bottom) of the spectrogram data area inside
-    a (canvas_w, canvas_h) image. Anything outside this area is axis chrome."""
+    """Pixel bounds (left, top, right, bottom) of the spectrogram data area
+    inside a (canvas_w, canvas_h) image. Anything outside this area is axis
+    chrome."""
     return (
         canvas_w * DATA_LEFT_FRAC,
         canvas_h * (1.0 - DATA_TOP_FRAC),

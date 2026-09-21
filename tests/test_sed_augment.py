@@ -47,7 +47,8 @@ def test_mixup_linear_power_blend_and_union_targets() -> None:
     mix.set_partner((p_mel, p_tgt, p_weak))
     out_mel, out_tgt, out_weak = mix(log_mel, target, weak)
 
-    # Reproduce lam from an identically-seeded generator to verify the linear-power math.
+    # Reproduce lam from an identically-seeded generator to verify the
+    # linear-power math.
     lam = float(np.random.default_rng(7).beta(0.4, 0.4))
     expected = 10.0 * np.log10(
         np.maximum(

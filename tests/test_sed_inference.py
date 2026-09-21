@@ -116,7 +116,8 @@ def test_load_sed_model(tmp_path) -> None:
 
 
 def test_load_sed_model_reconstructs_nondefault_architecture(tmp_path) -> None:
-    # Regression: a checkpoint trained with a non-default backbone config must reload
+    # Regression: a checkpoint trained with a non-default backbone config
+    # must reload
     # via its saved backbone_config (not the pretrained=False default), else
     # load_state_dict mismatches. Mirrors the real pretrained=True (Base) case.
     from transformers import ConvNextConfig

@@ -1,8 +1,10 @@
-"""Single-stage frame-level SED training (ConvNeXt-BirdSet, gradual unfreezing).
+"""Single-stage frame-level SED training (ConvNeXt-BirdSet, gradual
+unfreezing).
 
 Pipeline: build a per-clip table -> site/year split -> FrameSedDataset ->
 phase loop that progressively unfreezes backbone groups (scaling LR/batch per
-phase, with early stopping). Loss is per-frame focal (or BCE). Checkpoint selects
+phase, with early stopping). Loss is per-frame focal (or BCE). Checkpoint
+selects
 on the validation frame-level F1 (event-level eval is a separate stage).
 """
 
@@ -17,10 +19,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from torch.utils.data import DataLoader
 
-from turkey_audio_detection import __version__ as _PKG_VERSION
+from turkey_audio_detection import __version__ as _PKG_VERSION  # noqa: N812
 from turkey_audio_detection.config import SedTrainConfig
 from turkey_audio_detection.dataset import CLASS_INDEX, N_CLASSES
 from turkey_audio_detection.layout import model_dir
@@ -70,7 +72,9 @@ class FocalLoss(nn.Module):
 
 
 def site_split(table: pd.DataFrame, cfg: SedTrainConfig) -> pd.DataFrame:
-    """Assign train/val/test by SITE so no site appears in two splits (leave-site-out)."""
+    """Assign train/val/test by SITE so no site appears in two splits
+    (leave-site-out).
+    """
     out = table.copy()
     if "site_id" not in out.columns:
         out["site_id"] = out.get(
@@ -139,7 +143,9 @@ def _batch_mixup(
     p: SedMelParams,
     rng,
 ):
-    """Linear-power mixup at batch level (de-normalize -> dB -> blend -> re-normalize)."""
+    """Linear-power mixup at batch level (de-normalize -> dB -> blend ->
+    re-normalize).
+    """
     if alpha <= 0 or log_mel.shape[0] < 2:
         return log_mel, target
     lam = float(rng.beta(alpha, alpha))
@@ -210,7 +216,9 @@ def _run_epoch(
 def train_sed_from_table(
     table: pd.DataFrame, cfg: SedTrainConfig, project_root: Path
 ) -> dict:
-    """Core trainer given a pre-built per-clip table (testable without the pipeline)."""
+    """Core trainer given a pre-built per-clip table (testable without
+    the pipeline).
+    """
     _seed_everything(cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

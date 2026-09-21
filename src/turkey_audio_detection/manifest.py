@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from turkey_audio_detection import __version__ as _PACKAGE_VERSION
+from turkey_audio_detection import __version__ as _PACKAGE_VERSION  # noqa:N812
 
 
 def file_sha256(path: Path) -> str:

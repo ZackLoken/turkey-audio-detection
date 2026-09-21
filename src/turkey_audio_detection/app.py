@@ -26,8 +26,8 @@ from turkey_audio_detection.spectrogram_render import (
     render_canvas_spectrogram,
 )
 
-# Custom canvas component — replaces the unmaintained streamlit-drawable-canvas which
-# fails to render background images under Streamlit 1.30+ even with monkey-patches.
+# Custom canvas component - replaces unmaintained streamlit-drawable-canvas;
+# can't render background images under Streamlit 1.30+ with monkey-patches.
 _CANVAS_COMPONENT_DIR = (
     Path(__file__).resolve().parent / "components" / "canvas"
 )
@@ -238,9 +238,10 @@ def _spectrogram_pil_for_clip(
 
 
 def _spectrogram_png_b64_for_clip(clip_path: Path, item_id: str) -> str:
-    """Return base64-PNG of the clip's canvas-band spectrogram for embedding as a
-    `data:image/png;base64,...` URL in the custom canvas component. Reads the
-    pre-rendered PNG cache as raw bytes when present (fast, no PIL re-encode).
+    """Return base64-PNG of the clip's canvas-band spectrogram for
+    embedding as a `data:image/png;base64,...` URL in the custom canvas
+    component. Reads the pre-rendered PNG cache as raw bytes when present
+    (fast, no PIL re-encode).
     """
     import base64 as _b64
 
@@ -278,11 +279,13 @@ def pixel_y_to_hz(
     fmax_hz: float,
     canvas_w: int = CANVAS_WIDTH,
 ) -> float:
-    """Convert a canvas pixel-y to Hz on the mel scale, clipped to the data area.
+    """Convert a canvas pixel-y to Hz on the mel scale, clipped to the data
+    area.
 
-    The spectrogram leaves a margin at the bottom (and a thin top margin in some
-    configurations) for axis labels. Pixel-y values inside the margin clip to the
-    nearest data-area edge so the returned Hz is always inside [fmin, fmax].
+    The spectrogram leaves a margin at the bottom (and a thin top margin in
+    some configurations) for axis labels. Pixel-y values inside the margin
+    clip to the nearest data-area edge so the returned Hz is always inside
+    [fmin, fmax].
     """
     _, data_top, _, data_bottom = data_area_bounds(canvas_w, canvas_h)
     py_clipped = max(data_top, min(data_bottom, py))
@@ -323,7 +326,8 @@ def rect_to_region(
     fmax_hz: float,
     snap_freq: bool,
 ) -> dict | None:
-    """Convert one drawable-canvas rect into a region dict, or None if degenerate.
+    """Convert one drawable-canvas rect into a region dict, or None if
+    degenerate.
 
     Rectangles are clipped to the spectrogram data area so any portion the
     reviewer draws into the axis-label margins is discarded before computing
@@ -385,7 +389,8 @@ def rect_to_region(
     elif stroke == STROKE_COLOR_HEN.lower():
         label = "Hen"
     else:
-        # Unknown stroke — fall back to Tom (better than dropping a real annotation).
+        # Unknown stroke - fall back to Tom (better than dropping a real
+        # annotation).
         label = "Tom"
 
     return {
@@ -408,8 +413,9 @@ def region_to_rect(
     """Build a rect dict (`left`, `top`, `width`, `height`, `stroke`) for the
     custom canvas's `initial_rects` payload.
 
-    Region coords are expressed in (time, Hz); the rect is positioned inside the
-    spectrogram data area so it lines up with the underlying image.
+    Region coords are expressed in (time, Hz); the rect is positioned
+    inside the spectrogram data area so it lines up with the underlying
+    image.
     """
     data_left, _, data_right, _ = data_area_bounds(canvas_w, canvas_h)
     data_w = data_right - data_left
@@ -442,7 +448,8 @@ def region_to_rect(
 
 
 def derive_presence(regions: list[dict]) -> tuple[int, int]:
-    """Return (tom_present, hen_present) booleans derived from a region list."""
+    """Return (tom_present, hen_present) booleans derived from a region
+    list."""
     tom = int(any(r.get("label") == "Tom" for r in regions))
     hen = int(any(r.get("label") == "Hen" for r in regions))
     return tom, hen
@@ -470,10 +477,10 @@ def _inject_css() -> None:
     st.markdown(
         """
         <style>
-        /* Shrink default Streamlit vertical padding so the audio + spectrogram +
-           controls + nav buttons fit close together. Vertical scroll is left
-           enabled (Streamlit default) so the nav buttons remain reachable on
-           shorter monitors. */
+        /* Shrink default Streamlit vertical padding so the audio +
+           spectrogram + controls + nav buttons fit close together.
+           Vertical scroll is left enabled (Streamlit default) so the nav
+           buttons remain reachable on shorter monitors. */
         div[data-testid="stMainBlockContainer"] {
             padding-top: 1rem !important;
             padding-bottom: 0.5rem !important;
@@ -497,7 +504,8 @@ def _inject_css() -> None:
 
 
 def _launch_via_streamlit() -> None:
-    """Re-launch this module via `streamlit run` when called as a console script."""
+    """Re-launch this module via `streamlit run` when called as a
+    console script."""
     import os
     import subprocess
     import sys
@@ -521,11 +529,12 @@ def _launch_via_streamlit() -> None:
 
 
 def main() -> None:
-    """Entry point: re-launches via streamlit when called as a console script."""
+    """Entry point: re-launches via streamlit when called as a console
+    script."""
     import os
 
     # _TURKEY_STREAMLIT_CHILD is set by _launch_via_streamlit() so Streamlit
-    # inherits it. If it's absent we're a plain Python process and must re-launch.
+    # inherits it. Absent, we're a plain Python process and must re-launch.
     if not os.environ.get("_TURKEY_STREAMLIT_CHILD"):
         _launch_via_streamlit()
 
@@ -572,18 +581,19 @@ def main() -> None:
         with st.expander("How to label", expanded=False):
             st.markdown(
                 "Listen, then draw rectangles around each turkey call.\n\n"
-                "- **Tom** = lime green &nbsp; **Hen** = royal blue. Toggle active "
-                "label between drawings.\n"
+                "- **Tom** = lime green &nbsp; **Hen** = royal blue."
+                " Toggle active label between drawings.\n"
                 "- **Click a rectangle** to replay its clipped audio. "
                 "**Double-click** deletes.\n"
-                "- **Other birds present** — any non-turkey bird audible in the clip.\n"
-                "- **Unsure** — you can't reliably tell. Excluded from agreement "
-                "stats by default.\n"
-                "- **Save & Next** writes the snapshot and advances; saving empty = "
-                "*no turkey* label.\n"
+                "- **Other birds present** - any"
+                " non-turkey bird audible in the clip.\n"
+                "- **Unsure** - you can't reliably tell."
+                " Excluded from agreement stats by default.\n"
+                "- **Save & Next** writes the snapshot and advances;"
+                " saving empty = *no turkey* label.\n"
                 "- **Previous** edits the last labeled clip.\n"
-                "- **Reset canvas** clears drawings and the saved snapshot for "
-                "this clip."
+                "- **Reset canvas** clears drawings and the saved snapshot"
+                " for this clip."
             )
 
     reviewer_id = st.session_state.get("reviewer_id", "").strip()
@@ -623,9 +633,8 @@ def main() -> None:
             time_str = _dt.strftime("%I:%M %p").lower()
             if time_str.startswith("0"):
                 time_str = time_str[1:]
-            # The WAV filename's HHMMSS is the ARU's local clock (presumed Eastern
-            # per IndexConfig.timezone_name's default of "US/Eastern"). Append "ET"
-            # so reviewers don't have to guess.
+            # WAV filename HHMMSS is ARU's local clock (assumes US/Eastern per
+            # IndexConfig.timezone_name); append "ET" so reviewers know it.
             time_str = time_str + " ET"
         except ValueError:
             date_str = raw_dt
@@ -640,7 +649,8 @@ def main() -> None:
             pass
     _item_id = str(row.get("item_id", ""))
 
-    # Latest snapshot for this item (if any) — drives both the header summary and the canvas pre-population.
+    # Latest snapshot for this item (if any) - drives both the header summary
+    # and the canvas pre-population.
     _latest_row = None
     if not labels_df.empty and "item_id" in labels_df.columns:
         _latest = _latest_by_item(labels_df)
@@ -653,10 +663,10 @@ def main() -> None:
         if _latest_row is not None
         else []
     )
-    # One-shot "reset" flag — when set by the Reset canvas button, suppress the saved
-    # regions for a single render so the canvas comes up empty. The flag clears
-    # itself after consumption so subsequent renders of the same clip restore the
-    # saved snapshot (e.g. when Previous brings the reviewer back).
+    # One-shot "reset" flag - when set by the Reset canvas button, suppress
+    # the saved regions for a single render so the canvas comes up empty.
+    # It clears itself after consumption so subsequent renders of the same clip
+    # restore the saved snapshot (e.g. when Previous brings the reviewer back).
     _reset_key = f"_reset_{_item_id}"
     if st.session_state.get(_reset_key):
         existing_regions = []
@@ -682,7 +692,8 @@ def main() -> None:
     _existing_label = _format_summary(_latest_row, existing_regions)
 
     st.html(
-        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'<div style="display:flex;justify-content:space-between;'
+        f"align-items:center;"
         f'width:100%;font-size:1.1rem;margin:0.15rem 0;color:inherit">'
         f'<span style="text-align:left">ARU: {aru_display}</span>'
         f"<span>Date: {date_str}</span>"
@@ -737,8 +748,8 @@ def main() -> None:
         return
     spec_url = "data:image/png;base64," + spec_b64
 
-    # Seed the canvas with rectangles from the latest saved snapshot (if any), so
-    # Previous on a labeled clip restores the user's prior drawing.
+    # Seed the canvas with rectangles from the latest saved snapshot (if any),
+    # so Previous on a labeled clip restores the user's prior drawing.
     initial_rects: list[dict] = []
     for region in existing_regions:
         rect = region_to_rect(
@@ -799,10 +810,8 @@ def main() -> None:
     if save_clicked:
         regions: list[dict] = []
         for obj in canvas_rects or []:
-            # The custom canvas sends rectangles in the same shape rect_to_region expects:
-            # {left, top, width, height, stroke, label}. We synthesize a `type: "rect"` so
-            # the rect_to_region guard accepts the row, and pass scaleX/scaleY = 1.0
-            # (the custom canvas doesn't apply any scaling).
+            # Canvas rects match rect_to_region's shape (left, top, width,
+            # height, stroke, label); synthesize type/scale defaults it omits.
             shape = dict(obj)
             shape.setdefault("type", "rect")
             shape.setdefault("scaleX", 1.0)

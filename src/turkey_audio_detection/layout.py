@@ -59,7 +59,9 @@ class RunLayout:
 
 
 def models_root(project_root: Path) -> Path:
-    """Root directory for saved model artifacts. Project-wide, not run-scoped."""
+    """Root directory for saved model artifacts. Project-wide, not
+    run-scoped.
+    """
     return project_root / "data" / "_outputs" / "models"
 
 
@@ -93,6 +95,7 @@ def validate_project_layout(project_root: Path) -> list[Path]:
     aru_dirs = find_aru_dirs(project_root)
     if not aru_dirs:
         raise ValueError(
-            f"Expected one or more data/ARU_* folders under project root: {project_root}"
+            "Expected one or more data/ARU_* folders under project "
+            f"root: {project_root}"
         )
     return aru_dirs

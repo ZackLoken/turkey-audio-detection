@@ -1,9 +1,10 @@
 """Event-level + segment-level evaluation for frame SED.
 
-Event metric: per-class precision/recall/F1 with greedy time-axis IoU matching of
-predicted vs reviewer-box events (1D analogue of yolo-annotator's compute_matches).
-Segment metric: threshold-free-ish F1 over fixed time bins. Reported across an IoU
-sweep so the operating point isn't hidden.
+Event metric: per-class precision/recall/F1 with greedy time-axis IoU
+matching of predicted vs reviewer-box events (1D analogue of
+yolo-annotator's compute_matches).
+Segment metric: threshold-free-ish F1 over fixed time bins. Reported across
+an IoU sweep so the operating point isn't hidden.
 """
 
 from __future__ import annotations
@@ -40,7 +41,9 @@ def time_iou(a0: float, a1: float, b0: float, b1: float) -> float:
 def match_events(
     gt: list[Event], pred: list[Event], iou_threshold: float = 0.3
 ) -> dict:
-    """Greedy descending-IoU matching -> {tp, fp, fn}. One GT matches one prediction."""
+    """Greedy descending-IoU matching -> {tp, fp, fn}. One GT matches one
+    prediction.
+    """
     candidates: list[tuple[float, int, int]] = []
     for gi, (g0, g1) in enumerate(gt):
         for pi, (p0, p1) in enumerate(pred):
@@ -114,7 +117,9 @@ def evaluate_table(
     merge_gap_s: float = 0.2,
     clip_duration_s: float = 3.0,
 ) -> dict:
-    """Run the model over a labeled table; return event metrics (IoU sweep) + segment F1."""
+    """Run the model over a labeled table; return event metrics (IoU
+    sweep) + segment F1.
+    """
     extractor = LogMelExtractor(mel)
     hop_s = (
         mel.hop_length * int(payload.get("time_downsample", 8))

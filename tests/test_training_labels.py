@@ -178,8 +178,8 @@ def test_aggregate_tie_marks_non_consensus(tmp_path: Path) -> None:
 
 
 def test_aggregate_latest_wins_per_reviewer(tmp_path: Path) -> None:
-    """If a single reviewer has two snapshots for the same item, the latest one wins
-    before the majority vote runs."""
+    """If a single reviewer has two snapshots for the same item, the latest one
+    wins before the majority vote runs."""
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
     old = _label_row("i1", "r1", [], "2026-05-01T00:00:00+00:00", tom=0, hen=0)
@@ -206,8 +206,8 @@ def test_aggregate_latest_wins_per_reviewer(tmp_path: Path) -> None:
 
 
 def test_aggregate_unsure_majority_kills_consensus(tmp_path: Path) -> None:
-    """If most reviewers were unsure on a clip, the clip cannot be consensus even if
-    the present-attributes agree."""
+    """If most reviewers were unsure on a clip, the clip cannot be consensus
+    even if the present-attributes agree."""
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(

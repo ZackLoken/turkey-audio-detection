@@ -1,4 +1,5 @@
-"""End-to-end smoke test for the SED trainer (synthetic clips, pretrained=False)."""
+"""End-to-end smoke test for the SED trainer (synthetic clips,
+pretrained=False)."""
 
 from __future__ import annotations
 
@@ -60,7 +61,8 @@ def test_train_sed_from_table_smoke(tmp_path, monkeypatch) -> None:
         rows.append(
             {
                 "item_id": f"it{i}",
-                "aru_id": f"ARU_{i:02d}",  # 4 distinct ARUs -> 4 sites (no site_map -> fallback)
+                # 4 distinct ARUs -> 4 sites (no site_map -> fallback)
+                "aru_id": f"ARU_{i:02d}",
                 "recording_datetime": "2026-04-01 06:00:00",
                 "clip_path": str(cp),
                 "regions_json": regions,

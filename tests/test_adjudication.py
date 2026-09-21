@@ -75,7 +75,8 @@ def test_adjudication_outputs_files(tmp_path: Path) -> None:
             ),
         ]
     )
-    # Reviewer B: i1=Tom-only (agrees), i2=Tom-only (disagrees on both attributes)
+    # Reviewer B: i1=Tom-only (agrees), i2=Tom-only (disagrees on both
+    # attributes)
     r2 = pd.DataFrame(
         [
             _row(
@@ -132,7 +133,8 @@ def test_adjudication_outputs_files(tmp_path: Path) -> None:
     assert set(kappa_df["attribute"]) == {"tom_present", "hen_present"}
     assert (kappa_df["n_items"] == 2).all()
 
-    # Both attributes mismatch on i2 → 2 disagreement rows, both with item_id == "i2".
+    # Both attributes mismatch on i2 → 2 disagreement rows, both with
+    # item_id == "i2".
     assert len(disagreements_df) == 2
     assert set(disagreements_df["attribute"]) == {"tom_present", "hen_present"}
     assert (disagreements_df["item_id"] == "i2").all()
@@ -142,7 +144,8 @@ def test_adjudication_excludes_unsure_by_default(tmp_path: Path) -> None:
     labels_dir = tmp_path / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
 
-    # Both reviewers mark i1 as unsure; without include_unsure it must drop out of agreement stats.
+    # Both reviewers mark i1 as unsure; without include_unsure it must drop out
+    # of agreement stats.
     r1 = pd.DataFrame(
         [
             _row(
@@ -177,6 +180,7 @@ def test_adjudication_excludes_unsure_by_default(tmp_path: Path) -> None:
     kappa_df, disagreements_df = adjudicate_to_csv(
         labels_dir, tmp_path / "kappa.csv", tmp_path / "disagreements.csv"
     )
-    # With every row dropped by the unsure filter, every attribute reports n_items=0.
+    # With every row dropped by the unsure filter, every attribute reports
+    # n_items=0.
     assert (kappa_df["n_items"] == 0).all()
     assert len(disagreements_df) == 0

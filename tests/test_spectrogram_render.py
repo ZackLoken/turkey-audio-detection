@@ -9,7 +9,8 @@ import soundfile as sf
 
 def _make_wav(path: Path, duration_s: float = 3.0, sr: int = 48000) -> None:
     t = np.linspace(0, duration_s, int(sr * duration_s), endpoint=False)
-    # Mix of three tones so the mel spectrogram has actual content in the canvas band.
+    # Mix of three tones so the mel spectrogram has actual content in the
+    # canvas band.
     data = (
         0.2 * np.sin(2 * np.pi * 400 * t)
         + 0.2 * np.sin(2 * np.pi * 1200 * t)

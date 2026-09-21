@@ -33,7 +33,8 @@ def test_pixel_y_to_hz_endpoints() -> None:
 
 
 def test_pixel_y_to_hz_clips_out_of_range() -> None:
-    # Out-of-bounds py values are clamped so we never get NaNs into regions_json.
+    # Out-of-bounds py values are clamped so we never get NaNs into
+    # regions_json.
     high = pixel_y_to_hz(-10, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ)
     low = pixel_y_to_hz(
         CANVAS_HEIGHT + 10, CANVAS_HEIGHT, CANVAS_FMIN_HZ, CANVAS_FMAX_HZ
@@ -50,8 +51,8 @@ def test_hz_to_pixel_y_round_trip() -> None:
 
 
 def test_rect_to_region_basic_tom() -> None:
-    # Rect drawn entirely inside the spectrogram data area (i.e., to the right of
-    # the frequency-axis label margin on the left edge of the canvas).
+    # Rect drawn entirely inside the spectrogram data area (i.e., to the right
+    # of the frequency-axis label margin on the left edge of the canvas).
     data_left, data_top, data_right, data_bottom = data_area_bounds(
         CANVAS_WIDTH, CANVAS_HEIGHT
     )
@@ -158,7 +159,8 @@ def test_rect_to_region_zero_size_drops() -> None:
 
 
 def test_rect_to_region_clips_time_to_clip_duration() -> None:
-    # Rect drawn past the right edge of the canvas should clip to clip_duration_s.
+    # Rect drawn past the right edge of the canvas should clip to
+    # clip_duration_s.
     obj = {
         "type": "rect",
         "left": CANVAS_WIDTH * 0.9,

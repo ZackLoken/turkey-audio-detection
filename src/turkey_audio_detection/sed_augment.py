@@ -1,4 +1,5 @@
-"""Frame-level SED augmentations: operate on (log_mel_db, target(C,T), weak(C,)).
+"""Frame-level SED augmentations: operate on (log_mel_db, target(C,T),
+weak(C,)).
 
 Each augmentation is a callable
   (log_mel_db (n_mels,T), target (C,T), weak (C,)) -> same shapes,
@@ -19,7 +20,9 @@ _AMIN = 1e-10
 
 @dataclass
 class SpecAugment:
-    """Mask random time/frequency strips. Time masks also zero the (C,T) target."""
+    """Mask random time/frequency strips. Time masks also zero the
+    (C,T) target.
+    """
 
     time_mask_width: int = 30
     n_time_masks: int = 2
@@ -67,7 +70,9 @@ class SpecAugment:
 
 @dataclass
 class Mixup:
-    """Blend two samples in linear power. Provide the partner via set_partner()."""
+    """Blend two samples in linear power. Provide the partner via
+    set_partner().
+    """
 
     alpha: float = 0.4
     rng: np.random.Generator = field(default_factory=np.random.default_rng)
@@ -94,7 +99,8 @@ class Mixup:
         out = 10.0 * np.log10(
             np.maximum(lam * a_lin + (1.0 - lam) * b_lin, _AMIN)
         )
-        # Targets/weak are unions so supervision stays a valid {0,1} presence label.
+        # Targets/weak are unions so supervision stays a valid {0,1}
+        # presence label.
         return (
             out.astype(np.float32),
             np.maximum(target, p_tgt).astype(np.float32),
@@ -104,7 +110,9 @@ class Mixup:
 
 @dataclass
 class BackgroundMix:
-    """Add a scaled background dB log-mel at a random SNR (linear-power domain)."""
+    """Add a scaled background dB log-mel at a random SNR
+    (linear-power domain).
+    """
 
     snr_db_range: tuple[float, float] = (5.0, 25.0)
     rng: np.random.Generator = field(default_factory=np.random.default_rng)

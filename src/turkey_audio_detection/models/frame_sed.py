@@ -1,8 +1,10 @@
 """Single-stage frame-level SED model.
 
 log-mel (B, n_mels, T) -> ConvNeXt-BirdSet frontend (mid-stage tap) -> pool
-frequency -> temporal head (BiGRU default, TCN optional) -> per-frame, per-class
-logits (B, n_classes, T'). T' is the frontend's downsampled time axis (~80 ms at
+frequency -> temporal head (BiGRU default, TCN optional) -> per-frame,
+per-class
+logits (B, n_classes, T'). T' is the frontend's downsampled time axis
+(~80 ms at
 n_stages=2); training/inference resample targets to T' to match.
 """
 
@@ -99,7 +101,9 @@ class FrameSed(nn.Module):
         return logits.transpose(1, 2)  # (B, n_classes, T')
 
     def layer_groups(self) -> list[tuple[str, nn.Module]]:
-        """Ordered (name, module) from input to output, for gradual unfreezing."""
+        """Ordered (name, module) from input to output, for gradual
+        unfreezing.
+        """
         groups = list(self.backbone.stage_groups())
         groups.append(("temporal", self.temporal))
         groups.append(("classifier", self.classifier))

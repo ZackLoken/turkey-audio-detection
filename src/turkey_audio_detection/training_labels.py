@@ -1,9 +1,9 @@
 """Multi-reviewer label aggregation + training-table construction.
 
-Reads per-reviewer label CSVs produced by the v0.2.0 review app, resolves the latest
-snapshot per (reviewer_id, item_id), takes a majority vote across reviewers per
-attribute (tom_present, hen_present), and joins the result against a run's review
-queue to emit a per-clip training table.
+Reads per-reviewer label CSVs produced by the v0.2.0 review app, resolves
+the latest snapshot per (reviewer_id, item_id), takes a majority vote
+across reviewers per attribute (tom_present, hen_present), and joins the
+result against a run's review queue to emit a per-clip training table.
 """
 
 from __future__ import annotations
@@ -22,7 +22,9 @@ PRESENCE_ATTRIBUTES = ("tom_present", "hen_present")
 
 
 def _majority_vote(values: pd.Series) -> tuple[int, bool]:
-    """Return (majority_value, is_consensus). Ties resolve to 0 with consensus=False."""
+    """Return (majority_value, is_consensus). Ties resolve to 0 with
+    consensus=False.
+    """
     ints = values.fillna(0).astype(int)
     n = len(ints)
     if n == 0:
@@ -42,10 +44,11 @@ def aggregate_reviewers(labels_dir: Path) -> pd.DataFrame:
     Output columns:
       item_id, n_reviewers, tom_present, hen_present, other_birds_present,
       consensus, regions_json
-    The `regions_json` column is taken from the highest-`tom_present + hen_present`
-    snapshot (i.e., the most permissive reviewer's regions); ties broken by the
-    most recent label_timestamp_utc. This preserves the region geometry for SED
-    training without having to merge region polygons across disagreeing reviewers.
+    The `regions_json` column is taken from the highest-`tom_present +
+    hen_present` snapshot (i.e., the most permissive reviewer's regions);
+    ties broken by the most recent label_timestamp_utc. This preserves the
+    region geometry for SED training without having to merge region
+    polygons across disagreeing reviewers.
     """
     raw = _load_label_files(labels_dir)
     if raw.empty:
@@ -69,7 +72,8 @@ def aggregate_reviewers(labels_dir: Path) -> pd.DataFrame:
         tom, tom_cons = _majority_vote(group["tom_present"])
         hen, hen_cons = _majority_vote(group["hen_present"])
         other, _ = _majority_vote(group["other_birds_present"])
-        # any_unsure votes also factor: if more than half of reviewers were unsure,
+        # any_unsure votes also factor: if more than half of reviewers were
+        # unsure,
         # mark the clip non-consensus regardless of attribute agreement.
         unsure_majority = (
             int((group["unsure"].fillna(0).astype(int) == 1).sum() * 2) > n
@@ -78,8 +82,8 @@ def aggregate_reviewers(labels_dir: Path) -> pd.DataFrame:
 
         # Pick the "most informative" snapshot for regions: prefer rows whose
         # (tom_present + hen_present) sum matches the aggregated booleans, then
-        # most-recent timestamp. This avoids picking a region list from a reviewer
-        # who disagreed about presence.
+        # most-recent timestamp. This avoids picking a region list from a
+        # reviewer who disagreed about presence.
         target_sum = int(tom + hen)
         candidates = group[
             (
