@@ -57,6 +57,23 @@ def test_regions_to_frame_targets_single_tom() -> None:
     assert target[hen].sum() == 0.0
 
 
+def test_regions_to_frame_targets_overlapping_hen_and_tom() -> None:
+    hen_box = {"start_s": 0.5, "end_s": 1.5, "label": "Hen"}
+    tom_box = {"start_s": 1.0, "end_s": 2.5, "label": "Tom"}
+    target = regions_to_frame_targets([hen_box, tom_box], n_frames=300, p=P)
+    tom = CLASS_INDEX["Tom"]
+    hen = CLASS_INDEX["Hen"]
+    # 100 frames/s: hen 50..150, tom 100..250, overlap 100..150.
+    assert np.all(target[hen, 100:150] == 1.0)
+    assert np.all(target[tom, 100:150] == 1.0)
+    assert np.all(target[hen, 50:100] == 1.0)
+    assert np.all(target[tom, 50:100] == 0.0)
+    assert np.all(target[tom, 150:250] == 1.0)
+    assert np.all(target[hen, 150:250] == 0.0)
+    assert target[:, :50].sum() == 0.0
+    assert target[:, 250:].sum() == 0.0
+
+
 def test_regions_to_frame_targets_empty_is_all_zero() -> None:
     target = regions_to_frame_targets([], n_frames=120, p=P)
     assert target.shape == (N_CLASSES, 120)
