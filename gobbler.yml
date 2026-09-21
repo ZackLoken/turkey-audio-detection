@@ -1,23 +1,16 @@
 name: gobbler
-
-# Minimal environment. Conda provides Python, CUDA-enabled PyTorch, and ffmpeg.
-# Everything else (librosa, streamlit, birdnetlib, transformers, optuna, etc.) is
-# installed by `pip install -e .` via pyproject.toml after the env is created.
-
 channels:
-  - pytorch
-  - nvidia
   - conda-forge
-  - defaults
-
 dependencies:
-  - python=3.10
+  # TensorFlow publishes no Windows wheel for Python 3.14 yet.
+  - python=3.13
   - pip
-  - pytorch=2.5.1
-  - torchaudio=2.5.1
-  - pytorch-cuda=12.1
   - ffmpeg
   - pip:
-      # BirdNET runs on TensorFlow under the hood; birdnetlib does not declare
-      # it as a dependency, so we install it here.
-      - tensorflow==2.21.0
+      - --extra-index-url https://download.pytorch.org/whl/cu130
+      # birdnetlib imports TensorFlow and audioread without declaring them.
+      - tensorflow
+      - audioread
+      # pydub, used by birdnetlib, needs the audioop module Python 3.13 removed.
+      - audioop-lts
+      - -e .[dev]

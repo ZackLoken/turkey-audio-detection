@@ -31,17 +31,12 @@ Requirements: Git for Windows, Anaconda or Miniconda.
    cd turkey-audio-detection
    ```
 
-2. Create and activate the conda environment:
+2. Create and activate the conda environment, which installs the package
+   along with CUDA PyTorch, TensorFlow and ffmpeg:
 
    ```
    conda env create -f gobbler.yml
    conda activate gobbler
-   ```
-
-3. Install the package into the active environment:
-
-   ```
-   pip install -e .
    ```
 
 ## Run BirdNET detection
